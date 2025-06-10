@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useAPIKeyStore, Provider } from "@/frontend/stores/APIKeyStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,78 +15,16 @@ import {
 import { CheckIcon, EyeIcon, EyeOffIcon } from "lucide-react";
 
 export default function Settings() {
-  const { keys, setKey, hasKey } = useAPIKeyStore();
+  const apiKeyStore = useAPIKeyStore();
+  const [openaiKey, setOpenaiKey] = useState(apiKeyStore.getKey("openai"));
+  const [googleKey, setGoogleKey] = useState(apiKeyStore.getKey("google"));
+  const [saved, setSaved] = useState(false);
 
-  const [apiKeys, setApiKeys] = useState<Record<Provider, string>>({
-    openrouter: "",
-    google: "",
-    openai: "",
-  });
-
-  const [showKeys, setShowKeys] = useState<Record<Provider, boolean>>({
-    openrouter: false,
-    google: false,
-    openai: false,
-  });
-
-  const [saveStatus, setSaveStatus] = useState<
-    Record<Provider, "idle" | "success" | "error">
-  >({
-    openrouter: "idle",
-    google: "idle",
-    openai: "idle",
-  });
-
-  // Load existing keys on component mount
-  useEffect(() => {
-    setApiKeys({
-      openrouter: keys.openrouter || "",
-      google: keys.google || "",
-      openai: keys.openai || "",
-    });
-  }, [keys]);
-
-  const handleInputChange = (provider: Provider, value: string) => {
-    setApiKeys((prev) => ({
-      ...prev,
-      [provider]: value,
-    }));
-
-    // Reset save status when input changes
-    setSaveStatus((prev) => ({
-      ...prev,
-      [provider]: "idle",
-    }));
-  };
-
-  const toggleShowKey = (provider: Provider) => {
-    setShowKeys((prev) => ({
-      ...prev,
-      [provider]: !prev[provider],
-    }));
-  };
-
-  const saveKey = (provider: Provider) => {
-    try {
-      setKey(provider, apiKeys[provider]);
-      setSaveStatus((prev) => ({
-        ...prev,
-        [provider]: "success",
-      }));
-
-      // Reset success status after 2 seconds
-      setTimeout(() => {
-        setSaveStatus((prev) => ({
-          ...prev,
-          [provider]: "idle",
-        }));
-      }, 2000);
-    } catch (error) {
-      setSaveStatus((prev) => ({
-        ...prev,
-        [provider]: "error",
-      }));
-    }
+  const handleSave = () => {
+    apiKeyStore.setKey("openai", openaiKey);
+    apiKeyStore.setKey("google", googleKey);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
   };
 
   const providerInfo = {
@@ -111,74 +49,100 @@ export default function Settings() {
   };
 
   return (
-    <div className="container mx-auto py-8 max-w-3xl">
-      <h1 className="text-3xl font-bold mb-6">Settings</h1>
+    <div className="container mx-auto py-8 px-4">
+      <h1 className="text-2xl font-bold mb-6">Settings</h1>
 
-      <div className="space-y-6">
+      <div className="bg-white shadow rounded-lg p-6">
         <h2 className="text-xl font-semibold mb-4">API Keys</h2>
 
-        {Object.entries(providerInfo).map(([provider, info]) => (
-          <Card key={provider} className="mb-4">
-            <CardHeader>
-              <CardTitle>{info.name}</CardTitle>
-              <CardDescription>{info.description}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center space-x-2">
-                <div className="relative flex-1">
-                  <Input
-                    type={showKeys[provider as Provider] ? "text" : "password"}
-                    value={apiKeys[provider as Provider]}
-                    onChange={(e) =>
-                      handleInputChange(provider as Provider, e.target.value)
-                    }
-                    placeholder={info.placeholder}
-                    className="pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => toggleShowKey(provider as Provider)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                  >
-                    {showKeys[provider as Provider] ? (
-                      <EyeOffIcon className="h-4 w-4" />
-                    ) : (
-                      <EyeIcon className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-                <Button
-                  onClick={() => saveKey(provider as Provider)}
-                  disabled={
-                    !apiKeys[provider as Provider] ||
-                    apiKeys[provider as Provider] === keys[provider as Provider]
-                  }
-                  className="min-w-20"
-                >
-                  {saveStatus[provider as Provider] === "success" ? (
-                    <CheckIcon className="h-4 w-4 mr-2" />
-                  ) : null}
-                  {saveStatus[provider as Provider] === "success"
-                    ? "Saved"
-                    : "Save"}
-                </Button>
-              </div>
-              {hasKey(provider as Provider) && (
-                <p className="text-sm text-green-600 mt-2">API key is set</p>
-              )}
-            </CardContent>
-            <CardFooter>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              OpenAI API Key
+            </label>
+            <input
+              type="password"
+              value={openaiKey}
+              onChange={(e) => setOpenaiKey(e.target.value)}
+              className="w-full p-2 border rounded"
+              placeholder="sk-..."
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Get your API key from{" "}
               <a
-                href={info.link}
+                href="https://platform.openai.com/api-keys"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sm text-blue-600 hover:underline"
+                className="text-blue-500 hover:underline"
               >
-                Get your {info.name} API key
+                OpenAI
               </a>
-            </CardFooter>
-          </Card>
-        ))}
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Google AI API Key
+            </label>
+            <input
+              type="password"
+              value={googleKey}
+              onChange={(e) => setGoogleKey(e.target.value)}
+              className="w-full p-2 border rounded"
+              placeholder="AIza..."
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Get your API key from{" "}
+              <a
+                href="https://ai.google.dev/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-500 hover:underline"
+              >
+                Google AI Studio
+              </a>
+            </p>
+          </div>
+
+          <div className="pt-4">
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Save API Keys
+            </button>
+
+            {saved && (
+              <span className="ml-3 text-green-600">
+                API keys saved successfully!
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-8 bg-white shadow rounded-lg p-6">
+        <h2 className="text-xl font-semibold mb-4">API Key Status</h2>
+
+        <div className="space-y-2">
+          <div className="flex items-center">
+            <span className="w-24">OpenAI:</span>
+            {apiKeyStore.hasKey("openai") ? (
+              <span className="text-green-600">✓ Key set</span>
+            ) : (
+              <span className="text-red-600">✗ No key</span>
+            )}
+          </div>
+
+          <div className="flex items-center">
+            <span className="w-24">Google:</span>
+            {apiKeyStore.hasKey("google") ? (
+              <span className="text-green-600">✓ Key set</span>
+            ) : (
+              <span className="text-red-600">✗ No key</span>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

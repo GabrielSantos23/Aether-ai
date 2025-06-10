@@ -1,96 +1,92 @@
-# NexFaster
+# Aether AI
 
-A minimal template showcasing React Router integration within Next.js for client-side routing
+A unified web application for interacting with multiple AI models from a single interface.
 
-![nexfaster](./public/og.png)
+## Overview
 
-## 🚀 Quick Start
+Aether AI provides access to various AI providers including Gemini, OpenAI (ChatGPT), Claude, DeepSeek, and others through one streamlined platform. Instead of managing multiple accounts and interfaces, you can compare and utilize different AI models from a centralized hub.
+
+## Features
+
+### Multi-Provider AI Access
+
+Switch between different AI models to find the best fit for your specific use case. Each model has unique strengths and capabilities.
+
+### Advanced AI Capabilities
+
+- **Image Generation**: Create visuals from text descriptions
+- **Web Browsing**: Access real-time information from the internet
+- **Advanced Reasoning**: Get detailed, step-by-step analysis for complex questions
+- **Side-by-Side Comparison**: Query multiple AI providers simultaneously to compare responses and approaches
+- **Intuitive Interface**: Clean, responsive design optimized for ease of use
+
+## Technical Stack
+
+- **Next.js**: React framework for optimal performance and developer experience
+- **React Router**: Client-side routing for smooth navigation
+- **Drizzle ORM**: Type-safe database queries and schema management
+- **Better Auth**: Secure authentication and user management
+- **Supabase**: Backend services including database, authentication, and real-time features
+
+## Getting Started
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) (v18 or higher)
+- [PostgreSQL](https://www.postgresql.org/) database
+- [Supabase](https://supabase.com/) account
+
+### Installation
+
+1. Clone the repository:
 
 ```bash
-git clone https://github.com/rudrodip/nexfaster
-cd nexfaster
+git clone https://github.com/GabrielSantos23/Aether-ai.git
+cd aether-ai
+```
+
+2. Create a `.env.local` file with the required environment variables:
+
+```env
+DATABASE_URL=postgresql://username:password@localhost:5432/nexfaster
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+BETTER_AUTH_SECRET=your_auth_secret
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+```
+
+3. Install dependencies:
+
+```bash
+npm install
+# or
 bun install
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to see the app.
+4. Run database migrations:
 
-## 🏗️ Architecture
-
-NexFaster combines Next.js with React Router for pure client-side routing:
-
-1. **Route Redirection**: All routes redirect to `/shell` via `next.config.ts`
-2. **Shell Loading**: Shell page loads React Router app with `ssr: false`
-3. **Client Routing**: React Router handles all navigation client-side
-
-## 📁 Key Files
-
-- `next.config.ts` - Route redirection configuration
-- `src/app/shell/page.tsx` - Loads React Router app
-- `src/frontend/app.tsx` - Main React Router application
-- `src/config/site.config.ts` - Site configuration
-- `src/components/boilerplate.tsx` - Layout and page components
-
-## 🔧 Adding Routes
-
-Add new routes in `src/frontend/app.tsx`:
-
-```tsx
-<Route path="/your-page" element={<YourPage />} />
+```bash
+npx drizzle-kit push
 ```
 
-## 🎨 Features
+5. Start the development server:
 
-- ⚡ Lightning fast client-side routing
-- 🎯 Zero-config React Router integration
-- 🎨 Modern UI with Tailwind CSS
-- 🌙 Dark mode support
-- 📱 Responsive design
-- 🔧 TypeScript support
-
-## 🛠️ Tech Stack
-
-- **Framework**: Next.js 15
-- **Routing**: React Router 7
-- **Styling**: Tailwind CSS
-- **UI Components**: shadcn/ui
-- **Icons**: Lucide React
-- **Language**: TypeScript
-
-## 📖 Usage Examples
-
-### Multi-page App
-```tsx
-<Route path="/products" element={<ProductList />} />
-<Route path="/products/:id" element={<ProductDetail />} />
-<Route path="/cart" element={<ShoppingCart />} />
+```bash
+npm run dev
+# or
+bun run dev
 ```
 
-### Protected Routes
-```tsx
-<Route path="/dashboard" element={
-  <ProtectedRoute>
-    <Dashboard />
-  </ProtectedRoute>
-} />
+6. Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+### Production Build
+
+```bash
+bun run build
+bun run start
 ```
 
-### Nested Layouts
-```tsx
-<Route path="/admin" element={<AdminLayout />}>
-  <Route path="users" element={<UserManagement />} />
-  <Route path="settings" element={<Settings />} />
-</Route>
-```
+## Acknowledgments
 
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📄 License
-
-BSD Zero Clause License - see [LICENSE](LICENSE) for details.
-
-## 👤 Author
-
-Created by [rds_agi](https://rdsx.dev) • [GitHub](https://github.com/rudrodip/nexfaster) • [Twitter](https://x.com/rds_agi)
+Design inspiration from [t3.chat](https://t3.chat).

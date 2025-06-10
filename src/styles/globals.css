@@ -22,7 +22,7 @@
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
-  --color-input: var(--input);  
+  --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
@@ -124,7 +124,6 @@
   }
 }
 
-
 ::-moz-selection {
   color: var(--background);
   background: var(--foreground);
@@ -153,7 +152,7 @@
   animation-duration: 0.7s;
   animation-timing-function: var(--expo-out);
 }
-      
+
 ::view-transition-new(root) {
   animation-name: reveal-light;
 }
@@ -184,4 +183,3 @@
     clip-path: polygon(171% 50%, 50% 171%, -50% 71%, 50% -71%);
   }
 }
-

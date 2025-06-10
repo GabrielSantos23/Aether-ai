@@ -11,9 +11,7 @@ export default function AuthPage() {
   switch (action) {
     case "sign-in":
       return (
-        <div className="container flex flex-col items-center justify-center min-h-screen py-12">
-          <LoginForm />
-        </div>
+        <div className="container flex flex-col items-center justify-center min-h-screen py-12"></div>
       );
     case "profile":
       return (

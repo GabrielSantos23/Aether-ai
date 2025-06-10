@@ -7,10 +7,5 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
-  return (
-    <>
-      {children}
-      <Toaster />
-    </>
-  );
+  return <>{children}</>;
 }

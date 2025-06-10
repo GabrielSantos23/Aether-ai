@@ -1,143 +1,133 @@
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { google } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { streamText, smoothStream } from "ai";
-import { headers } from "next/headers";
-import { NextRequest, NextResponse } from "next/server";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { db } from "@/lib/db";
+import * as schema from "@/lib/schema";
+import { nanoid } from "nanoid";
+import { eq, and } from "drizzle-orm";
+import { getUser } from "@/lib/auth-uitls";
 
-// Option 1: Using the Class-based approach
-import { AIModelManager, ModelConfig } from "@/lib/models";
-import { siteConfig } from "@/config/site.config";
-
-export const maxDuration = 60;
-
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const { messages, model } = await req.json();
-    const headersList = await headers();
-
-    // Validate model exists
-    if (!AIModelManager.hasModel(model)) {
-      return new Response(
-        JSON.stringify({ error: `Unsupported model: ${model}` }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+    // Get authenticated user
+    const user = await getUser();
+    if (!user) {
+      return new Response("Unauthorized", { status: 401 });
     }
 
-    const modelConfig = AIModelManager.getConfig(model);
-    if (!modelConfig) {
-      return new Response(
-        JSON.stringify({ error: "Model configuration not found" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+    const {
+      messages,
+      chatId,
+      provider = "openai",
+      model,
+      apiKey,
+    } = await req.json();
+
+    // Validate messages
+    if (!messages || !Array.isArray(messages)) {
+      return new Response("Messages are required", { status: 400 });
     }
 
-    const apiKey = headersList.get(modelConfig.headerKey) as string;
+    // Handle chat creation or retrieval
+    let currentChatId = chatId;
 
-    if (!apiKey) {
-      return new Response(
-        JSON.stringify({
-          error: `Missing API key for ${modelConfig.provider}`,
-        }),
-        {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
+    if (!currentChatId) {
+      // Create new chat
+      currentChatId = nanoid();
+      const title = messages[0]?.content?.slice(0, 100) || "New Chat";
+
+      await db.insert(schema.chat).values({
+        id: currentChatId,
+        title,
+        userId: user.id,
+        createdAt: new Date(),
+      });
+    } else {
+      // Verify chat ownership
+      try {
+        const existingChats = await db
+          .select()
+          .from(schema.chat)
+          .where(
+            and(
+              eq(schema.chat.id, currentChatId),
+              eq(schema.chat.userId, user.id)
+            )
+          );
+
+        if (!existingChats.length) {
+          return new Response("Chat not found", { status: 404 });
         }
-      );
+      } catch (error) {
+        console.error("Error fetching chat:", error);
+        return new Response("Error verifying chat ownership", { status: 500 });
+      }
     }
 
+    // Save user message
+    const userMessage = messages[messages.length - 1];
+    if (userMessage?.role === "user") {
+      await db.insert(schema.message).values({
+        id: nanoid(),
+        chatId: currentChatId,
+        role: "user",
+        content: userMessage.content,
+        createdAt: new Date(),
+      });
+    }
+
+    // Configure AI provider
     let aiModel;
-    switch (modelConfig.provider) {
-      case "google":
-        const google = createGoogleGenerativeAI({ apiKey });
-        aiModel = google(modelConfig.modelId);
-        break;
-      case "openai":
-        const openai = createOpenAI({ apiKey });
-        aiModel = openai(modelConfig.modelId);
-        break;
-      case "openrouter":
-        const openrouter = createOpenRouter({ apiKey });
-        aiModel = openrouter(modelConfig.modelId);
-        break;
-      default:
-        return new Response(
-          JSON.stringify({
-            error: `Unsupported model provider: ${modelConfig.provider}`,
-          }),
-          {
-            status: 400,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
+
+    if (provider === "google") {
+      const googleModel = model || "gemini-1.5-pro-latest";
+      // Create custom Google provider with API key if provided
+      const customGoogle = apiKey
+        ? createGoogleGenerativeAI({ apiKey })
+        : google;
+      aiModel = customGoogle(googleModel);
+    } else {
+      const openaiModel = model || "gpt-4o-mini";
+      // Create custom OpenAI provider with API key if provided
+      const customOpenAI = apiKey ? createOpenAI({ apiKey }) : openai;
+      aiModel = customOpenAI(openaiModel);
     }
 
-    const result = streamText({
+    // Stream the AI response
+    const result = await streamText({
       model: aiModel,
       messages,
-      onError: (error) => {
-        console.error("Streaming error:", error);
-      },
-      system: `
-      You are ${siteConfig.name}, an advanced AI assistant specialized in answering questions and helping with various tasks.
-
-Your behavior guidelines:
-
-    Be helpful and provide accurate, relevant information.
-
-    Be respectful and polite in all interactions.
-
-    Maintain an engaging, clear, and conversational tone. Avoid sounding robotic.
-
-Math formatting rules (strict):
-
-    Always use LaTeX for mathematical content.
-
-    Inline math must be wrapped in single dollar signs: $...$
-
-    Display math must be wrapped in double dollar signs: ......
-
-    Display math should always be on its own line, with nothing else on that line.
-
-    Do not nest math delimiters or mix inline and display styles.
-
-Examples:
-
-    Inline: The equation $E = mc^2$ shows mass-energy equivalence.
-
-    Display:
-    ddxsin⁡(x)=cos⁡(x)
-    dxd​sin(x)=cos(x)
-
-Stick to these rules at all times. Clarity and precision are essential.
-      `,
-      experimental_transform: [smoothStream({ chunking: "word" })],
-      abortSignal: req.signal,
+      system:
+        "You are a helpful assistant. Provide clear, accurate, and helpful responses.",
     });
 
-    return result.toDataStreamResponse({
-      sendReasoning: true,
-      getErrorMessage: (error) => {
-        return (error as { message: string }).message;
-      },
-    });
+    // Save assistant message after streaming completes
+    result.text
+      .then(async (finalText) => {
+        await db.insert(schema.message).values({
+          id: nanoid(),
+          chatId: currentChatId,
+          role: "assistant",
+          content: finalText,
+          createdAt: new Date(),
+        });
+      })
+      .catch((error) => {
+        console.error("Failed to save assistant message:", error);
+      });
+
+    // Create response with chat ID header
+    const response = result.toDataStreamResponse();
+
+    if (!chatId) {
+      response.headers.set("x-chat-id", currentChatId);
+    }
+
+    return response;
   } catch (error) {
-    console.error("Route error:", error);
-    return new NextResponse(
-      JSON.stringify({
-        error: "Internal Server Error",
-        details: error instanceof Error ? error.message : "Unknown error",
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    console.error("Chat API error:", error);
+    return new Response("Internal Server Error", { status: 500 });
   }
 }

@@ -4,7 +4,7 @@ import { SidebarTrigger, useSidebar } from "../ui/sidebar";
 import ThemeToggler from "@/components/theme/toggler";
 import { motion, AnimatePresence } from "framer-motion";
 import React from "react";
-import { NavLink } from "react-router";
+import { NavLink } from "react-router-dom";
 
 export const CommandDialogContext = React.createContext<{
   setOpen: (open: boolean) => void;
