@@ -1,7 +1,9 @@
 import { createAuthClient } from "better-auth/react";
 
 export const authClient = createAuthClient({
-  plugins: [],
+  // If your API base URL matches the frontend, this is optional
+  // baseURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL
 });
 
-export const { signIn, signOut, signUp, linkSocial, useSession } = authClient;
+// Export commonly used functions for convenience
+export const { signIn, signOut, useSession } = authClient;

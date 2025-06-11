@@ -1,133 +1,119 @@
-import { streamText } from "ai";
-import { openai } from "@ai-sdk/openai";
-import { google } from "@ai-sdk/google";
-import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { db } from "@/lib/db";
-import * as schema from "@/lib/schema";
-import { nanoid } from "nanoid";
-import { eq, and } from "drizzle-orm";
-import { getUser } from "@/lib/auth-uitls";
+import { streamText, createDataStreamResponse } from "ai";
+import { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
+
+export const maxDuration = 30;
 
 export async function POST(req: Request) {
   try {
-    // Get authenticated user
-    const user = await getUser();
-    if (!user) {
-      return new Response("Unauthorized", { status: 401 });
-    }
+    const { messages, geminiApiKey, useWebSearch, useThinking } =
+      await req.json();
 
-    const {
-      messages,
-      chatId,
-      provider = "openai",
-      model,
-      apiKey,
-    } = await req.json();
+    const apiKey = geminiApiKey || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
 
-    // Validate messages
-    if (!messages || !Array.isArray(messages)) {
-      return new Response("Messages are required", { status: 400 });
-    }
-
-    // Handle chat creation or retrieval
-    let currentChatId = chatId;
-
-    if (!currentChatId) {
-      // Create new chat
-      currentChatId = nanoid();
-      const title = messages[0]?.content?.slice(0, 100) || "New Chat";
-
-      await db.insert(schema.chat).values({
-        id: currentChatId,
-        title,
-        userId: user.id,
-        createdAt: new Date(),
-      });
-    } else {
-      // Verify chat ownership
-      try {
-        const existingChats = await db
-          .select()
-          .from(schema.chat)
-          .where(
-            and(
-              eq(schema.chat.id, currentChatId),
-              eq(schema.chat.userId, user.id)
-            )
-          );
-
-        if (!existingChats.length) {
-          return new Response("Chat not found", { status: 404 });
-        }
-      } catch (error) {
-        console.error("Error fetching chat:", error);
-        return new Response("Error verifying chat ownership", { status: 500 });
-      }
-    }
-
-    // Save user message
-    const userMessage = messages[messages.length - 1];
-    if (userMessage?.role === "user") {
-      await db.insert(schema.message).values({
-        id: nanoid(),
-        chatId: currentChatId,
-        role: "user",
-        content: userMessage.content,
-        createdAt: new Date(),
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: "Missing Gemini API key" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
       });
     }
 
-    // Configure AI provider
-    let aiModel;
-
-    if (provider === "google") {
-      const googleModel = model || "gemini-1.5-pro-latest";
-      // Create custom Google provider with API key if provided
-      const customGoogle = apiKey
-        ? createGoogleGenerativeAI({ apiKey })
-        : google;
-      aiModel = customGoogle(googleModel);
-    } else {
-      const openaiModel = model || "gpt-4o-mini";
-      // Create custom OpenAI provider with API key if provided
-      const customOpenAI = apiKey ? createOpenAI({ apiKey }) : openai;
-      aiModel = customOpenAI(openaiModel);
-    }
-
-    // Stream the AI response
-    const result = await streamText({
-      model: aiModel,
-      messages,
-      system:
-        "You are a helpful assistant. Provide clear, accurate, and helpful responses.",
+    const google = createGoogleGenerativeAI({
+      apiKey: apiKey,
     });
 
-    // Save assistant message after streaming completes
-    result.text
-      .then(async (finalText) => {
-        await db.insert(schema.message).values({
-          id: nanoid(),
-          chatId: currentChatId,
-          role: "assistant",
-          content: finalText,
-          createdAt: new Date(),
-        });
-      })
-      .catch((error) => {
-        console.error("Failed to save assistant message:", error);
-      });
+    // Create model config based on options
+    const modelConfig: any = {};
 
-    // Create response with chat ID header
-    const response = result.toDataStreamResponse();
-
-    if (!chatId) {
-      response.headers.set("x-chat-id", currentChatId);
+    // Add web search if enabled
+    if (useWebSearch) {
+      modelConfig.useSearchGrounding = true;
     }
 
-    return response;
+    // Select the appropriate model based on thinking preference
+    // Gemini 1.5 Flash is good for standard usage
+    // For thinking capabilities, Gemini 1.5 Pro is better suited
+    const modelName = useThinking
+      ? "gemini-2.5-flash-preview-04-17"
+      : "gemini-2.5-flash-preview-04-17";
+
+    // Create provider options
+    const providerOptions: { google?: GoogleGenerativeAIProviderOptions } = {};
+
+    // Configure thinking if enabled
+    if (useThinking) {
+      providerOptions.google = {
+        thinkingConfig: {
+          includeThoughts: true,
+          thinkingBudget: 12000, // Larger budget for more detailed reasoning
+        },
+        // Note: streamMode is not directly supported in the type definition
+      };
+    }
+
+    // System message with thinking instructions if needed
+    const systemPrompt = `You are a helpful assistant.
+- For code blocks, always use Markdown syntax with the language specified (e.g., \`\`\`javascript).
+- For mathematical formulas, use LaTeX syntax. Use $...$ for inline formulas and $$...$$ for block formulas.
+- Format text using Markdown (bold, italics, lists, etc.) when appropriate to improve clarity.
+${
+  useWebSearch
+    ? "- When using web search, always cite your sources at the end of your response."
+    : ""
+}
+${
+  useThinking
+    ? `- For complex problems or questions, show your reasoning by:
+  1. First working through the problem step-by-step
+  2. Carefully considering multiple approaches and evaluating tradeoffs
+  3. If any calculation is needed, show your work clearly
+  4. When providing code, explain your implementation choices
+  5. Preface your reasoning with "### My reasoning:" and end it with "### Final answer:" to clearly separate it from your final answer`
+    : ""
+}`;
+
+    // Use a custom data stream to handle both web search and thinking
+    return createDataStreamResponse({
+      execute: async (dataStream) => {
+        let reasoningBuffer = "";
+
+        const result = streamText({
+          model: google(modelName, modelConfig),
+          system: systemPrompt,
+          messages,
+          providerOptions: providerOptions,
+          onChunk: ({ chunk }) => {
+            if (chunk.type === "source") {
+              dataStream.writeSource(chunk.source);
+              console.log("Source detected:", chunk.source);
+            }
+
+            if (chunk.type === "reasoning") {
+              console.log("Streaming reasoning chunk:", chunk.textDelta);
+
+              if (chunk.textDelta) {
+                reasoningBuffer += chunk.textDelta;
+
+                dataStream.writeData({
+                  type: "reasoning",
+                  text: reasoningBuffer,
+                });
+              }
+            }
+          },
+        });
+
+        result.mergeIntoDataStream(dataStream);
+      },
+    });
   } catch (error) {
     console.error("Chat API error:", error);
-    return new Response("Internal Server Error", { status: 500 });
+    return new Response(
+      JSON.stringify({ error: "Failed to process chat request" }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 }

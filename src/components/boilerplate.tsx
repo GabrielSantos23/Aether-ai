@@ -7,84 +7,14 @@ import { NavAuth } from "@/components/auth/nav-auth";
 import { useEffect } from "react";
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen bg-background">
-      <nav className="">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center space-x-8">
-              <NavLink to="/" className="text-xl font-bold text-primary">
-                {siteConfig.name}
-              </NavLink>
-              <div className="hidden md:flex space-x-6">
-                <NavLink
-                  to="/"
-                  className={({ isActive }) =>
-                    `text-sm transition-colors ${
-                      isActive
-                        ? "text-primary font-medium"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`
-                  }
-                >
-                  Home
-                </NavLink>
-                <NavLink
-                  to="/docs"
-                  className={({ isActive }) =>
-                    `text-sm transition-colors ${
-                      isActive
-                        ? "text-primary font-medium"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`
-                  }
-                >
-                  Docs
-                </NavLink>
-                <NavLink
-                  to="/examples"
-                  className={({ isActive }) =>
-                    `text-sm transition-colors ${
-                      isActive
-                        ? "text-primary font-medium"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`
-                  }
-                >
-                  Examples
-                </NavLink>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <NavAuth />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-full"
-                asChild
-              >
-                <a
-                  href={siteConfig.socials.github}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <GithubIcon className="w-4 h-4" />
-                </a>
-              </Button>
-              <ThemeToggler />
-            </div>
-          </div>
-        </div>
-      </nav>
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {children}
-      </main>
-    </div>
-  );
+  return <div className="min-h-screen bg-background"></div>;
 }
 
 export function Home() {
   const navigate = useNavigate();
+  useEffect(() => {
+    navigate("/chat");
+  }, []);
 
   return null;
 }

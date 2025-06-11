@@ -5,18 +5,16 @@ import {
   useLocation,
   Navigate,
 } from "react-router-dom";
-import { Docs, Examples, Home, Layout } from "@/components/boilerplate";
 import NotFound from "@/app/not-found";
-import { LoginForm } from "@/components/auth/login-form";
-import { UserProfile } from "@/components/auth/user-profile";
 import React from "react";
 import Sidebar from "../components/sidebar/index";
-import { useUser } from "@/lib/hooks/useUser";
+import { useUser } from "@/hooks/useUser";
 import { CommandProvider } from "@/components/command-provider";
-import { NewChat } from "@/components/chat/new-chat";
-import { ChatDetail } from "@/components/chat/chat-detail";
-import Settings from "@/components/settings/settings";
+import { Chat } from "@/components/chat";
 import { Toaster } from "@/components/ui/sonner";
+import { LoginForm } from "@/components/auth/SignInForm";
+import { UserProfile } from "@/components/auth/UserProfile";
+import { APIKeySettings } from "@/components/settings/APIKeySettings";
 
 function useIsAuthPage() {
   const location = useLocation();
@@ -32,10 +30,6 @@ function AuthRoute({ element }: { element: React.ReactNode }) {
 
   if (isLoading) {
     return <div>Loading...</div>;
-  }
-
-  if (user) {
-    return <Navigate to="/" state={{ from: location }} replace />;
   }
 
   return <>{element}</>;
@@ -56,27 +50,35 @@ function ProtectedRoute({ element }: { element: React.ReactNode }) {
   return <>{element}</>;
 }
 
+function Settings() {
+  return (
+    <div className="container mx-auto py-8 max-w-4xl">
+      <h1 className="text-2xl font-bold mb-8">Settings</h1>
+      <div className="p-6 bg-card rounded-lg shadow-sm">
+        <APIKeySettings />
+      </div>
+    </div>
+  );
+}
+
 function AppRoutes() {
   const isAuthPage = useIsAuthPage();
 
   const routes = (
     <Routes>
       <Route path="/" element={<Navigate to="/chat" replace />} />
-      <Route
-        path="/chat"
-        element={<ProtectedRoute element={<ChatDetail />} />}
-      />
-      <Route
-        path="/chat/:id"
-        element={<ProtectedRoute element={<ChatDetail />} />}
-      />
+      <Route path="/chat" element={<ProtectedRoute element={<Chat />} />} />
+      <Route path="/chat/:id" element={<ProtectedRoute element={<Chat />} />} />
 
       <Route path="/auth" element={<AuthRoute element={<LoginForm />} />} />
       <Route
         path="/auth/profile"
         element={<ProtectedRoute element={<UserProfile />} />}
       />
-      <Route path="/settings" element={<Settings />} />
+      <Route
+        path="/settings"
+        element={<ProtectedRoute element={<Settings />} />}
+      />
 
       <Route path="*" element={<NotFound />} />
     </Routes>
@@ -93,7 +95,7 @@ function AppWithProviders() {
   return (
     <CommandProvider>
       <AppRoutes />
-      <Toaster />
+      <Toaster className="bg-popover/50 backdrop-blur-md" />
     </CommandProvider>
   );
 }

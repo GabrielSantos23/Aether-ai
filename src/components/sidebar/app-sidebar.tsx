@@ -25,7 +25,7 @@ import { Input } from "../ui/input";
 import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { signIn, signOut } from "@/lib/auth-client";
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useUser } from "@/lib/hooks/useUser";
+import { useUser } from "@/hooks/useUser";
 import { Avatar, AvatarFallback } from "../ui/avatar";
 import { Skeleton } from "../ui/skeleton";
 import { toast } from "sonner";
