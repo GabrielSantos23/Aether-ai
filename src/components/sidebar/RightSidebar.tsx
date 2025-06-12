@@ -1,11 +1,19 @@
 import { ComponentProps } from "react";
-import { Sidebar, SidebarContent, SidebarRail } from "@/components/ui/sidebar";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarRail,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import SourceMessages, { Source } from "@/components/chat/sourcemessages";
 
 interface RightSidebarProps {
   children?: React.ReactNode;
   defaultOpen?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  sources?: Source[];
 }
 
 export function RightSidebar({
@@ -13,6 +21,7 @@ export function RightSidebar({
   defaultOpen,
   open,
   onOpenChange,
+  sources = [],
   ...props
 }: RightSidebarProps &
   Omit<
@@ -22,7 +31,13 @@ export function RightSidebar({
   return (
     <Sidebar side="right" {...props}>
       <SidebarRail />
-      <SidebarContent>{children}</SidebarContent>
+      <SidebarContent>
+        <SidebarHeader className="flex items-center justify-between"></SidebarHeader>
+        <div className="flex-1 overflow-hidden">
+          <SourceMessages sources={sources} />
+        </div>
+        {children}
+      </SidebarContent>
     </Sidebar>
   );
 }

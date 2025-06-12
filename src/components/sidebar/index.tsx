@@ -1,9 +1,11 @@
 import { SidebarInset, SidebarProvider } from "../ui/sidebar";
 import { AppSidebar } from "./app-sidebar";
+import { RightSidebar } from "./RightSidebar";
 import { SidebarButtons, SidebarButtonsRight } from "./sidebar-buttons";
-import { useState } from "react";
+import { useState, useContext } from "react";
+import { Source } from "../chat/sourcemessages";
+import React from "react";
 
-// Helper function to safely access localStorage
 function getLocalStorageItem(key: string, defaultValue: boolean): boolean {
   if (typeof window === "undefined") return defaultValue;
   try {
@@ -17,21 +19,42 @@ function getLocalStorageItem(key: string, defaultValue: boolean): boolean {
 
 const SIDEBAR_STORAGE_KEY = "sidebar_state";
 
+export const SourcesContext = React.createContext<{
+  sources: Source[];
+  setActiveSources: (sources: Source[]) => void;
+}>({
+  sources: [],
+  setActiveSources: () => {},
+});
+
+export const useSources = () => useContext(SourcesContext);
+
 export default function Sidebar({ children }: { children: React.ReactNode }) {
   const [defaultOpen] = useState(() =>
     getLocalStorageItem(`${SIDEBAR_STORAGE_KEY}_left`, true)
   );
 
+  const [sources, setSources] = useState<Source[]>([]);
+
   return (
-    <SidebarProvider defaultOpen={defaultOpen}>
-      <SidebarButtons />
-      <SidebarButtonsRight />
-      <AppSidebar />
-      <SidebarInset className="flex flex-col flex-1 min-w-0">
-        <main className="flex-1 overflow-auto border-muted-foreground/10 border rounded-lg">
-          {children}
-        </main>
-      </SidebarInset>
-    </SidebarProvider>
+    <SourcesContext.Provider
+      value={{
+        sources,
+        setActiveSources: setSources,
+      }}
+    >
+      <SidebarProvider defaultOpen={defaultOpen} defaultOpenRight={false}>
+        <SidebarButtons />
+        <SidebarButtonsRight />
+        <AppSidebar />
+
+        <SidebarInset className="overflow-hidden">
+          <main className="max-h-[99vh] rounded-lg overflow-y-auto">
+            {children}
+          </main>
+        </SidebarInset>
+        <RightSidebar sources={sources} />
+      </SidebarProvider>
+    </SourcesContext.Provider>
   );
 }

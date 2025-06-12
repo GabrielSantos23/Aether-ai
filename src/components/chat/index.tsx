@@ -4,7 +4,32 @@ import { useState, useEffect, ChangeEvent, useRef } from "react";
 import { useChat } from "@ai-sdk/react";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
+import { ScrollToBottomButton } from "./ScrollToBottomButton";
 import { useAPIKeyStore } from "@/frontend/stores/APIKeyStore";
+import {
+  useChatStore,
+  Chat as ChatType,
+  Message as StoredMessage,
+} from "@/frontend/stores/ChatStore";
+import { generateChatTitle } from "@/frontend/services/ChatService";
+import { toast } from "sonner";
+import { useParams, useNavigate } from "react-router-dom";
+
+function errorHandler(error: unknown) {
+  if (error == null) {
+    return "Unknown error occurred";
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return JSON.stringify(error);
+}
 
 interface Source {
   id: string;
@@ -14,49 +39,133 @@ interface Source {
 }
 
 export function Chat() {
+  const { id: chatId } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
   const [useThinking, setUseThinking] = useState<boolean>(false);
   const [sources, setSources] = useState<Source[]>([]);
+  const [selectedModel, setSelectedModel] =
+    useState<string>("Gemini 2.5 Flash");
   const [messageToSourcesMap, setMessageToSourcesMap] = useState<
     Record<string, Source[]>
   >({});
   const [messageToReasoningMap, setMessageToReasoningMap] = useState<
     Record<string, string>
   >({});
+  const [reasoningUpdateTimestamps, setReasoningUpdateTimestamps] = useState<
+    Record<string, number>
+  >({});
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [initialMessages, setInitialMessages] = useState<any[]>([]);
 
-  // Add a ref for the main container to handle scrolling
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Get API key from the store
-  const apiKey = useAPIKeyStore((state) => state.getKey("google"));
+  const apiKeyStore = useAPIKeyStore();
+  const { createChat, getChat, addMessage, updateChatTitle, setActiveChat } =
+    useChatStore();
+  const { findModelConfig } = require("@/lib/models");
+  const modelConfig = findModelConfig(selectedModel);
+  const provider = modelConfig?.provider || "google";
+  const apiKey = apiKeyStore.getKey(provider);
 
-  // Use the custom onFinish handler with reasoning support
+  const supportsWebSearch = modelConfig?.supportsWebSearch || false;
+  const supportsThinking = modelConfig?.supportsThinking || false;
+
+  const effectiveWebSearch = supportsWebSearch && useWebSearch;
+  const effectiveThinking = supportsThinking && useThinking;
+
+  // Initialize chat or redirect if invalid ID
+  useEffect(() => {
+    const initializeChat = async () => {
+      // Reset state when chatId changes
+      setInitialMessages([]);
+      setMessageToSourcesMap({});
+      setMessageToReasoningMap({});
+      setReasoningUpdateTimestamps({});
+      setSources([]);
+
+      if (chatId) {
+        const existingChat = getChat(chatId);
+        if (!existingChat) {
+          // If the chat doesn't exist (invalid ID), redirect to a new chat
+          navigate("/chat");
+        } else {
+          setActiveChat(chatId);
+
+          // Convert stored messages to AI SDK format
+          const initialMsgs = existingChat.messages.map((msg) => ({
+            id: msg.id,
+            content: msg.content,
+            role: msg.role,
+            createdAt: new Date(msg.createdAt),
+          }));
+
+          setInitialMessages(initialMsgs);
+          setIsInitialized(true);
+        }
+      } else {
+        // No chatId in URL means we're on the /chat route (new chat)
+        // Don't create a chat yet - wait for the first message
+        setActiveChat(null);
+        setInitialMessages([]);
+        setIsInitialized(true);
+      }
+    };
+
+    initializeChat();
+
+    // Listen for popstate events (back/forward browser navigation)
+    const handlePopState = () => {
+      const pathParts = window.location.pathname.split("/");
+      const newChatId =
+        pathParts[pathParts.length - 1] === "chat"
+          ? null
+          : pathParts[pathParts.length - 1];
+
+      if (newChatId !== chatId) {
+        setIsInitialized(false);
+        // Let the effect handle the rest
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+
+    // Cleanup function
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      setIsInitialized(false);
+      setInitialMessages([]);
+    };
+  }, [chatId, navigate, getChat, setActiveChat]);
+
   const {
     messages,
     input,
     handleInputChange: originalHandleInputChange,
-    handleSubmit,
+    handleSubmit: aiSdkHandleSubmit,
     isLoading,
     error,
     data,
   } = useChat({
+    initialMessages,
     body: {
-      geminiApiKey: apiKey,
-      useWebSearch: useWebSearch,
-      useThinking: useThinking,
+      apiKey,
+      selectedModel,
+      useWebSearch: effectiveWebSearch,
+      useThinking: effectiveThinking,
     },
     onResponse: (response) => {
-      // Don't reset sources here, as they might come in later chunks
       console.log("Response received, waiting for sources...");
     },
     onFinish: async (message) => {
-      if (message.role === "assistant") {
+      if (message.role === "assistant" && chatId) {
         console.log("Message finished, processing sources:", message.id);
 
-        // Try to extract sources from the message content
+        // Save the assistant message to our store
+        addMessage(chatId, message.content, "assistant");
+
         extractSourcesFromRawContent(message.content, message.id);
 
-        // Also check if we have sources in the data object
         if (data && Array.isArray(data)) {
           const sourcesFromData = data
             .filter(
@@ -74,6 +183,35 @@ export function Chat() {
               ...prev,
               [message.id]: sourcesFromData,
             }));
+          }
+        }
+
+        if (useThinking && selectedModel.includes("Deepseek")) {
+          try {
+            const reasoningMatch = message.content.match(
+              /### My reasoning:([\s\S]+?)(?=### Final answer:|$)/
+            );
+            if (reasoningMatch && reasoningMatch[1]) {
+              const reasoning = reasoningMatch[1].trim();
+              processReasoningData(reasoning, message.id);
+
+              const cleanedContent = message.content.replace(
+                /### My reasoning:[\s\S]+?(?=### Final answer:|$)/,
+                ""
+              );
+              const finalContent = cleanedContent
+                .replace(/### Final answer:/, "")
+                .trim();
+
+              if (finalContent !== message.content) {
+                message.content = finalContent;
+              }
+            }
+          } catch (error) {
+            console.error(
+              "Error extracting reasoning from OpenRouter model:",
+              error
+            );
           }
         }
 
@@ -104,7 +242,66 @@ export function Chat() {
         }
       }
     },
+    id: chatId || undefined,
   });
+
+  // Custom handleSubmit that integrates with our chat store
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    if (!input.trim() || !isInitialized || isLoading) return;
+
+    let currentChatId = chatId;
+
+    // If we don't have an active chat, create one but don't navigate yet
+    if (!currentChatId) {
+      currentChatId = createChat();
+
+      // Update URL without causing a navigation/reload
+      window.history.pushState({}, "", `/chat/${currentChatId}`);
+
+      // Update active chat
+      setActiveChat(currentChatId);
+    }
+
+    // Save the message to our store
+    const messageId = addMessage(currentChatId, input, "user");
+
+    // Call the AI SDK's submit handler
+    aiSdkHandleSubmit(e);
+
+    // Generate title asynchronously for first message
+    const chat = getChat(currentChatId);
+    if (chat && chat.messages.length === 1) {
+      try {
+        const title = await generateChatTitle(input, messageId, currentChatId);
+        updateChatTitle(currentChatId, title);
+      } catch (error) {
+        console.error("Failed to generate chat title:", error);
+      }
+    }
+  };
+
+  // Handle errors from the AI SDK
+  useEffect(() => {
+    if (error) {
+      console.error("Chat error details:", errorHandler(error));
+
+      const errorMessage = error.message?.toLowerCase() || "";
+      if (
+        errorMessage.includes("api key") ||
+        errorMessage.includes("apikey") ||
+        errorMessage.includes("authentication")
+      ) {
+        toast.error("API key error. Please check your API key in settings.");
+      } else if (
+        errorMessage.includes("timeout") ||
+        errorMessage.includes("timed out")
+      ) {
+        toast.error("Request timed out. Please try again.");
+      }
+    }
+  }, [error]);
 
   useEffect(() => {
     if (data && Array.isArray(data)) {
@@ -125,7 +322,6 @@ export function Chat() {
         assistantMessageIndex >= 0 ? messages[assistantMessageIndex + 1] : null;
 
       if (assistantMessage) {
-        // Extract sources from the data stream
         const sources: Source[] = [];
 
         data.forEach((item: any) => {
@@ -142,7 +338,6 @@ export function Chat() {
               url: item.source.url || "",
             };
 
-            // Avoid duplicates
             if (!sources.some((s) => s.id === source.id)) {
               sources.push(source);
             }
@@ -171,7 +366,6 @@ export function Chat() {
           });
         }
 
-        // Handle reasoning data
         data.forEach((item: any) => {
           if (
             item &&
@@ -179,24 +373,50 @@ export function Chat() {
             item.type === "reasoning" &&
             item.text
           ) {
+            console.log("Received reasoning data:", item.text);
             setMessageToReasoningMap((prev) => ({
               ...prev,
               [assistantMessage.id]: item.text,
+            }));
+
+            setReasoningUpdateTimestamps((prev) => ({
+              ...prev,
               [`_lastUpdate_${assistantMessage.id}`]: Date.now(),
             }));
           }
         });
+
+        if (
+          selectedModel.includes("Deepseek") &&
+          useThinking &&
+          assistantMessage.content
+        ) {
+          const reasoningMatch = assistantMessage.content.match(
+            /### My reasoning:([\s\S]+?)(?=### Final answer:|$)/
+          );
+
+          if (reasoningMatch && reasoningMatch[1]) {
+            const reasoning = reasoningMatch[1].trim();
+            console.log(
+              "Extracted reasoning from OpenRouter model:",
+              reasoning
+            );
+
+            setMessageToReasoningMap((prev) => ({
+              ...prev,
+              [assistantMessage.id]: reasoning,
+            }));
+
+            setReasoningUpdateTimestamps((prev) => ({
+              ...prev,
+              [`_lastUpdate_${assistantMessage.id}`]: Date.now(),
+            }));
+          }
+        }
       }
     }
-  }, [data, messages]);
+  }, [data, messages, selectedModel, useThinking]);
 
-  // Simplify the extractSourcesFromStreamData function
-  const extractSourcesFromStreamData = (messageId: string) => {
-    // This function is now just a placeholder since sources are handled in the useEffect above
-    console.log(`Finalizing sources for message ${messageId}`);
-  };
-
-  // Create a compatible handleInputChange function
   const handleInputChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
@@ -207,7 +427,6 @@ export function Chat() {
     }
   };
 
-  // Add a utility function to parse raw Gemini output format
   const parseRawGeminiOutput = (
     content: string
   ): { text: string; sources: Source[] } => {
@@ -224,24 +443,19 @@ export function Chat() {
         line.startsWith("d:") ||
         line.startsWith("e:")
       ) {
-        // These are part of the raw output format, we'll ignore them or process them
         if (line.startsWith('0:"')) {
-          // Extract the text content
           try {
             const textContent = JSON.parse(line.substring(2));
             textLines.push(textContent);
           } catch (e) {
-            // If parsing fails, just add the raw content
             textLines.push(line);
           }
         }
       } else {
-        // Regular content
         textLines.push(line);
       }
     });
 
-    // Parse sources
     const sources: Source[] = [];
     sourceLines.forEach((line) => {
       try {
@@ -262,9 +476,7 @@ export function Chat() {
     };
   };
 
-  // Function to extract sources from raw content
   const extractSourcesFromRawContent = (content: string, messageId: string) => {
-    // Check if the content is in the raw Gemini output format
     if (content.includes('h:{"sourceType":"url"')) {
       console.log(`Found raw source data in message ${messageId}`);
 
@@ -276,13 +488,11 @@ export function Chat() {
           extractedSources
         );
 
-        // Update the message-to-sources map
         setMessageToSourcesMap((prev) => ({
           ...prev,
           [messageId]: extractedSources,
         }));
 
-        // Also update the global sources array
         setSources((prev) => {
           const newSources = [...prev];
           for (const source of extractedSources) {
@@ -294,7 +504,6 @@ export function Chat() {
         });
       }
     } else {
-      // Original implementation for other content formats
       const lines = content.split("\n");
       const sourceLines = lines.filter((line) => line.startsWith("h:"));
 
@@ -308,7 +517,6 @@ export function Chat() {
           try {
             const sourceData = JSON.parse(line.slice(2));
             if (sourceData && sourceData.sourceType === "url") {
-              // Check if this source is already in our array
               if (!extractedSources.some((s) => s.id === sourceData.id)) {
                 extractedSources.push({
                   id: sourceData.id || Math.random().toString(),
@@ -329,13 +537,11 @@ export function Chat() {
             extractedSources
           );
 
-          // Update the message-to-sources map
           setMessageToSourcesMap((prev) => ({
             ...prev,
             [messageId]: extractedSources,
           }));
 
-          // Also update the global sources array
           setSources((prev) => {
             const newSources = [...prev];
             for (const source of extractedSources) {
@@ -350,19 +556,15 @@ export function Chat() {
     }
   };
 
-  // Add a function to clean the raw Gemini output format
   const cleanRawGeminiOutput = (content: string): string => {
     if (!content.includes('h:{"sourceType":"url"')) {
-      // If it's not in the raw format, return as is
       return content;
     }
 
-    // Parse the content and return only the text part
     const { text } = parseRawGeminiOutput(content);
     return text;
   };
 
-  // Add utility function to process reasoning data
   const processReasoningData = (reasoning: string, messageId: string) => {
     if (reasoning && messageId) {
       console.log(
@@ -373,114 +575,157 @@ export function Chat() {
         ...prev,
         [messageId]: reasoning,
       }));
+
+      setReasoningUpdateTimestamps((prev) => ({
+        ...prev,
+        [`_lastUpdate_${messageId}`]: Date.now(),
+      }));
     }
   };
 
-  // Function to extract sources from data
-  const extractSourcesFromData = () => {
-    if (!data) return;
+  // Skip auto-scrolling when user has scrolled up
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
 
-    // Log the data structure to help debug
-    console.log("Data received:", JSON.stringify(data));
-
-    // Try different approaches to extract sources
-    let extractedSources: Source[] = [];
-
-    // Approach 1: Look for sources in the first item if data is an array
-    if (Array.isArray(data) && data.length > 0) {
-      const firstItem = data[0];
-      if (
-        typeof firstItem === "object" &&
-        firstItem &&
-        "sources" in firstItem
-      ) {
-        const sourcesData = (firstItem as any).sources;
-        if (Array.isArray(sourcesData)) {
-          extractedSources = sourcesData as Source[];
-        }
-      }
-    }
-
-    if (
-      extractedSources.length === 0 &&
-      typeof data === "object" &&
-      data &&
-      "sources" in data
-    ) {
-      const sourcesData = (data as any).sources;
-      if (Array.isArray(sourcesData)) {
-        extractedSources = sourcesData as Source[];
-      }
-    }
-
-    // Approach 3: Look for parts with type 'source'
-    if (extractedSources.length === 0 && Array.isArray(data)) {
-      for (const item of data) {
-        if (
-          typeof item === "object" &&
-          item &&
-          "type" in item &&
-          item.type === "source"
-        ) {
-          if ("source" in item && typeof item.source === "object") {
-            const sourceObj = item.source as unknown;
-            // Validate that it has the required properties before adding it
-            if (
-              typeof sourceObj === "object" &&
-              sourceObj !== null &&
-              "id" in sourceObj &&
-              "sourceType" in sourceObj
-            ) {
-              extractedSources.push(sourceObj as Source);
-            }
-          }
-        }
-      }
-    }
-
-    // If we found sources, update the state
-    if (extractedSources.length > 0) {
-      console.log("Sources found:", extractedSources);
-      setSources((prevSources) => {
-        // Merge with existing sources, avoiding duplicates
-        const newSources = [...prevSources];
-        for (const source of extractedSources) {
-          if (!newSources.some((s) => s.id === source.id)) {
-            newSources.push(source);
-          }
-        }
-        return newSources;
-      });
-    }
-  };
-
-  // Add auto-scrolling effect when messages change
   useEffect(() => {
-    if (containerRef.current) {
+    if (containerRef.current && autoScrollEnabled) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, autoScrollEnabled]);
+
+  // Monitor scroll position to toggle auto-scroll
+  const handleScroll = () => {
+    if (!containerRef.current) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+
+    // If we're at the bottom, enable auto-scroll
+    if (distanceFromBottom < 10) {
+      setAutoScrollEnabled(true);
+    } else {
+      setAutoScrollEnabled(false);
+    }
+  };
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    container.addEventListener("scroll", handleScroll);
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
+  // Message action handlers
+  const handleRetry = (messageId: string) => {
+    // Find the message and resubmit it
+    const messageIndex = messages.findIndex((m) => m.id === messageId);
+    if (messageIndex === -1) return;
+
+    const message = messages[messageIndex];
+
+    if (message.role === "user") {
+      // Set input to the message content and clear subsequent messages
+      originalHandleInputChange({ target: { value: message.content } } as any);
+      // TODO: Clear subsequent messages in the actual implementation
+      aiSdkHandleSubmit(new Event("submit") as any);
+    } else {
+      // For assistant messages, retry the generation
+      // This effectively means resending the last user message
+      const lastUserMessageIndex = messages
+        .slice(0, messageIndex)
+        .map((m, i) => ({ message: m, index: i }))
+        .filter((item) => item.message.role === "user")
+        .pop()?.index;
+
+      if (lastUserMessageIndex !== undefined) {
+        const lastUserMessage = messages[lastUserMessageIndex];
+        originalHandleInputChange({
+          target: { value: lastUserMessage.content },
+        } as any);
+        aiSdkHandleSubmit(new Event("submit") as any);
+      }
+    }
+  };
+
+  const handleEdit = (messageId: string, content: string) => {
+    // Set the input field to the edited message content
+    originalHandleInputChange({ target: { value: content } } as any);
+
+    // Focus the input field
+    const textarea = document.querySelector("textarea");
+    if (textarea) {
+      textarea.focus();
+    }
+  };
+
+  const handleBranchOff = (messageId: string) => {
+    // Create a new chat with the context up to this message
+    const messageIndex = messages.findIndex((m) => m.id === messageId);
+    if (messageIndex === -1) return;
+
+    // Create a new chat
+    const newChatId = createChat();
+
+    // Get all messages up to and including this message
+    const messagesUpToThis = messages.slice(0, messageIndex + 1);
+
+    // Add these messages to the new chat
+    messagesUpToThis.forEach((msg) => {
+      addMessage(newChatId, msg.content, msg.role as "user" | "assistant");
+    });
+
+    // Navigate to the new chat
+    navigate(`/chat/${newChatId}`);
+  };
+
+  // If not initialized, show loading state
+  if (!isInitialized) {
+    return (
+      <div className="flex flex-col items-center justify-center w-full h-screen">
+        <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+        <p className="mt-4 text-muted-foreground">Loading chat...</p>
+      </div>
+    );
+  }
 
   return (
     <div
       ref={containerRef}
-      className="flex flex-col items-center justify-between w-full  overflow-y-auto"
+      className="flex flex-col items-center justify-between w-full h-screen overflow-y-auto"
     >
       <div className="w-full max-w-4xl flex-1 pb-52">
         <MessageList
           messages={messages.map((m) => ({
             id: m.id,
             role: m.role as "user" | "assistant",
-            content: m.content,
+            content:
+              m.role === "assistant" && useWebSearch
+                ? cleanRawGeminiOutput(m.content)
+                : m.content,
           }))}
           isLoading={isLoading}
           messageToSourcesMap={messageToSourcesMap}
           messageToReasoningMap={messageToReasoningMap}
+          reasoningUpdateTimestamps={reasoningUpdateTimestamps}
           sources={sources}
           useThinking={useThinking}
+          selectedModel={selectedModel}
+          onRetry={handleRetry}
+          onEdit={handleEdit}
+          onBranchOff={handleBranchOff}
         />
       </div>
-      <div className="fixed bottom-5 border p-4 bg-card/80 backdrop-blur-lg  w-full max-w-4xl rounded-2xl shadow-lg z-10">
+
+      <div
+        className={`${
+          messages.length > 0 ? "fixed bottom-5" : "fixed top-2/4"
+        } border p-4 bg-card/80 backdrop-blur-lg  w-full max-w-4xl rounded-2xl shadow-lg z-10 `}
+      >
+        {messages.length > 0 && (
+          <ScrollToBottomButton containerRef={containerRef} />
+        )}
         <ChatInput
           input={input}
           handleInputChange={handleInputChange}
@@ -492,6 +737,8 @@ export function Chat() {
           setUseWebSearch={setUseWebSearch}
           useThinking={useThinking}
           setUseThinking={setUseThinking}
+          selectedModel={selectedModel}
+          setSelectedModel={setSelectedModel}
         />
       </div>
     </div>

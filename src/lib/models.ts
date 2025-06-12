@@ -10,6 +10,8 @@ export class AIModelManager {
         provider: "openrouter" as Provider,
         headerKey: "X-OpenRouter-API-Key",
         supportsWebSearch: false,
+        supportsThinking: true,
+        viewImage: false,
       },
     ],
     [
@@ -19,6 +21,19 @@ export class AIModelManager {
         provider: "openrouter" as Provider,
         headerKey: "X-OpenRouter-API-Key",
         supportsWebSearch: false,
+        supportsThinking: false,
+        viewImage: false,
+      },
+    ],
+    [
+      "Llama 4 Maverick",
+      {
+        modelId: "meta-llama/llama-4-maverick:free",
+        provider: "openrouter" as Provider,
+        headerKey: "X-OpenRouter-API-Key",
+        supportsWebSearch: false,
+        supportsThinking: false,
+        viewImage: true,
       },
     ],
     [
@@ -28,6 +43,8 @@ export class AIModelManager {
         provider: "google" as Provider,
         headerKey: "X-Google-API-Key",
         supportsWebSearch: true,
+        supportsThinking: true,
+        viewImage: true,
       },
     ],
     [
@@ -37,6 +54,8 @@ export class AIModelManager {
         provider: "google" as Provider,
         headerKey: "X-Google-API-Key",
         supportsWebSearch: true,
+        supportsThinking: true,
+        viewImage: true,
       },
     ],
     [
@@ -46,6 +65,8 @@ export class AIModelManager {
         provider: "openai" as Provider,
         headerKey: "X-OpenAI-API-Key",
         supportsWebSearch: true,
+        supportsThinking: false,
+        viewImage: true,
       },
     ],
     [
@@ -55,6 +76,8 @@ export class AIModelManager {
         provider: "openai" as Provider,
         headerKey: "X-OpenAI-API-Key",
         supportsWebSearch: true,
+        supportsThinking: false,
+        viewImage: true,
       },
     ],
     [
@@ -64,6 +87,8 @@ export class AIModelManager {
         provider: "openai" as Provider,
         headerKey: "X-OpenAI-API-Key",
         supportsWebSearch: true,
+        supportsThinking: false,
+        viewImage: true,
       },
     ],
   ]);
@@ -87,6 +112,8 @@ export type ModelConfig = {
   provider: Provider;
   headerKey: string;
   supportsWebSearch?: boolean;
+  supportsThinking?: boolean;
+  viewImage?: boolean;
 };
 
 // Alternative 2: Factory function approach
@@ -97,42 +124,64 @@ const createModelRegistry = () => {
       provider: "openrouter" as Provider,
       headerKey: "X-OpenRouter-API-Key",
       supportsWebSearch: false,
+      supportsThinking: true,
+      viewImage: false,
     }),
     "Deepseek V3": () => ({
       modelId: "deepseek/deepseek-chat-v3-0324:free",
       provider: "openrouter" as Provider,
       headerKey: "X-OpenRouter-API-Key",
       supportsWebSearch: false,
+      supportsThinking: false,
+      viewImage: false,
+    }),
+    "Llama 4 Maverick": () => ({
+      modelId: "meta-llama/llama-4-maverick:free",
+      provider: "openrouter" as Provider,
+      headerKey: "X-OpenRouter-API-Key",
+      supportsWebSearch: false,
+      supportsThinking: false,
+      viewImage: true,
     }),
     "Gemini 2.5 Pro": () => ({
       modelId: "gemini-2.5-pro-preview-05-06",
       provider: "google" as Provider,
       headerKey: "X-Google-API-Key",
       supportsWebSearch: true,
+      supportsThinking: true,
+      viewImage: true,
     }),
     "Gemini 2.5 Flash": () => ({
       modelId: "gemini-2.5-flash-preview-04-17",
       provider: "google" as Provider,
       headerKey: "X-Google-API-Key",
       supportsWebSearch: true,
+      supportsThinking: true,
+      viewImage: true,
     }),
     "GPT-4o": () => ({
       modelId: "gpt-4o",
       provider: "openai" as Provider,
       headerKey: "X-OpenAI-API-Key",
       supportsWebSearch: true,
+      supportsThinking: false,
+      viewImage: true,
     }),
     "GPT-4o-mini": () => ({
       modelId: "gpt-4o-mini",
       provider: "openai" as Provider,
       headerKey: "X-OpenAI-API-Key",
       supportsWebSearch: true,
+      supportsThinking: false,
+      viewImage: true,
     }),
     "GPT-4.1-mini": () => ({
       modelId: "gpt-4.1-mini",
       provider: "openai" as Provider,
       headerKey: "X-OpenAI-API-Key",
       supportsWebSearch: true,
+      supportsThinking: false,
+      viewImage: true,
     }),
   };
 
@@ -146,39 +195,82 @@ const createModelRegistry = () => {
 
 export const ModelRegistry = createModelRegistry();
 
-// Alternative 3: Enum-like object with builder pattern
 export const ModelBuilder = {
-  openrouter: (modelId: string, supportsWebSearch: boolean = false) => ({
+  openrouter: (
+    modelId: string,
+    supportsWebSearch: boolean = false,
+    supportsThinking: boolean = false,
+    viewImage: boolean = false
+  ) => ({
     modelId,
     provider: "openrouter" as Provider,
     headerKey: "X-OpenRouter-API-Key",
     supportsWebSearch,
+    supportsThinking,
+    viewImage,
   }),
-  google: (modelId: string, supportsWebSearch: boolean = false) => ({
+  google: (
+    modelId: string,
+    supportsWebSearch: boolean = false,
+    supportsThinking: boolean = false,
+    viewImage: boolean = false
+  ) => ({
     modelId,
     provider: "google" as Provider,
     headerKey: "X-Google-API-Key",
     supportsWebSearch,
+    supportsThinking,
+    viewImage,
   }),
-  openai: (modelId: string, supportsWebSearch: boolean = false) => ({
+  openai: (
+    modelId: string,
+    supportsWebSearch: boolean = false,
+    supportsThinking: boolean = false,
+    viewImage: boolean = false
+  ) => ({
     modelId,
     provider: "openai" as Provider,
     headerKey: "X-OpenAI-API-Key",
     supportsWebSearch,
+    supportsThinking,
+    viewImage,
   }),
 } as const;
 
 export const MODELS_CATALOG = {
-  "Deepseek R1 0528": ModelBuilder.openrouter("deepseek/deepseek-r1-0528:free"),
-  "Deepseek V3": ModelBuilder.openrouter("deepseek/deepseek-chat-v3-0324:free"),
-  "Gemini 2.5 Pro": ModelBuilder.google("gemini-2.5-pro-preview-05-06", true),
+  "Deepseek R1 0528": ModelBuilder.openrouter(
+    "deepseek/deepseek-r1-0528:free",
+    false,
+    true,
+    false
+  ),
+  "Deepseek V3": ModelBuilder.openrouter(
+    "deepseek/deepseek-chat-v3-0324:free",
+    false,
+    false,
+    false
+  ),
+  "Llama 4 Maverick": ModelBuilder.openrouter(
+    "meta-llama/llama-4-maverick:free",
+    true,
+    false,
+    false
+  ),
+  "Gemini 2.5 Pro": ModelBuilder.google(
+    "gemini-2.5-pro-preview-05-06",
+    true,
+    true,
+    false
+  ),
   "Gemini 2.5 Flash": ModelBuilder.google(
     "gemini-2.5-flash-preview-04-17",
-    true
+    true,
+    true,
+    false
   ),
-  "GPT-4o": ModelBuilder.openai("gpt-4o", true),
-  "GPT-4o-mini": ModelBuilder.openai("gpt-4o-mini", true),
-  "GPT-4.1-mini": ModelBuilder.openai("gpt-4.1-mini", true),
+  "GPT-4o": ModelBuilder.openai("gpt-4o", true, false, false),
+  "GPT-4o-mini": ModelBuilder.openai("gpt-4o-mini", true, false, false),
+  "GPT-4.1-mini": ModelBuilder.openai("gpt-4.1-mini", true, false, false),
 } as const;
 
 export const getModelFromCatalog = (name: keyof typeof MODELS_CATALOG) =>
@@ -198,6 +290,8 @@ export const AI_MODEL_DEFINITIONS: readonly ModelDefinition[] = [
       provider: "openrouter",
       headerKey: "X-OpenRouter-API-Key",
       supportsWebSearch: false,
+      supportsThinking: true,
+      viewImage: false,
     },
   },
   {
@@ -207,6 +301,19 @@ export const AI_MODEL_DEFINITIONS: readonly ModelDefinition[] = [
       provider: "openrouter",
       headerKey: "X-OpenRouter-API-Key",
       supportsWebSearch: false,
+      supportsThinking: false,
+      viewImage: false,
+    },
+  },
+  {
+    name: "Llama 4 Maverick",
+    config: {
+      modelId: "meta-llama/llama-4-maverick:free",
+      provider: "openrouter",
+      headerKey: "X-OpenRouter-API-Key",
+      supportsWebSearch: false,
+      supportsThinking: false,
+      viewImage: true,
     },
   },
   {
@@ -216,6 +323,8 @@ export const AI_MODEL_DEFINITIONS: readonly ModelDefinition[] = [
       provider: "google",
       headerKey: "X-Google-API-Key",
       supportsWebSearch: true,
+      supportsThinking: true,
+      viewImage: true,
     },
   },
   {
@@ -225,6 +334,8 @@ export const AI_MODEL_DEFINITIONS: readonly ModelDefinition[] = [
       provider: "google",
       headerKey: "X-Google-API-Key",
       supportsWebSearch: true,
+      supportsThinking: true,
+      viewImage: true,
     },
   },
   {
@@ -234,6 +345,8 @@ export const AI_MODEL_DEFINITIONS: readonly ModelDefinition[] = [
       provider: "openai",
       headerKey: "X-OpenAI-API-Key",
       supportsWebSearch: true,
+      supportsThinking: false,
+      viewImage: true,
     },
   },
   {
@@ -243,6 +356,8 @@ export const AI_MODEL_DEFINITIONS: readonly ModelDefinition[] = [
       provider: "openai",
       headerKey: "X-OpenAI-API-Key",
       supportsWebSearch: true,
+      supportsThinking: false,
+      viewImage: true,
     },
   },
   {
@@ -252,11 +367,12 @@ export const AI_MODEL_DEFINITIONS: readonly ModelDefinition[] = [
       provider: "openai",
       headerKey: "X-OpenAI-API-Key",
       supportsWebSearch: true,
+      supportsThinking: false,
+      viewImage: true,
     },
   },
 ] as const;
 
-// Create a memoized map for faster model lookups
 const modelConfigMap = new Map<string, ModelConfig>(
   AI_MODEL_DEFINITIONS.map((def) => [def.name, def.config])
 );
@@ -271,6 +387,12 @@ export const getAllModelNames = (): string[] => {
 
 export const getWebSearchCompatibleModels = (): string[] => {
   return AI_MODEL_DEFINITIONS.filter((def) => def.config.supportsWebSearch).map(
+    (def) => def.name
+  );
+};
+
+export const getThinkingCompatibleModels = (): string[] => {
+  return AI_MODEL_DEFINITIONS.filter((def) => def.config.supportsThinking).map(
     (def) => def.name
   );
 };

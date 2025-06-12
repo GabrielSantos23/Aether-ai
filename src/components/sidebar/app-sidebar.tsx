@@ -47,14 +47,7 @@ import {
   isThisMonth,
   parseISO,
 } from "date-fns";
-
-type Chat = {
-  id: string;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-  userId: string;
-};
+import { useChatStore, Chat } from "@/frontend/stores/ChatStore";
 
 type GroupedChats = {
   [key: string]: Chat[];
@@ -63,48 +56,18 @@ type GroupedChats = {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [loading, setLoading] = useState(false);
   const { user, isLoading } = useUser();
-  const [chats, setChats] = useState<Chat[]>([]);
-  const [isLoadingChats, setIsLoadingChats] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
-  const [chatToDelete, setChatToDelete] = useState<string | null>(null);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteAllDialogOpen, setDeleteAllDialogOpen] = useState(false);
 
-  // Function to fetch chats - moved to its own function for reuse
-  const fetchChats = useCallback(async () => {
-    if (!user) return;
-
-    try {
-      setIsLoadingChats(true);
-      const response = await fetch("/api/chats");
-      if (!response.ok) {
-        throw new Error("Failed to fetch chats");
-      }
-      const data = await response.json();
-      setChats(data.chats);
-    } catch (error) {
-      console.error("Error fetching chats:", error);
-    } finally {
-      setIsLoadingChats(false);
-    }
-  }, [user]);
-
-  // Initial fetch when component mounts
-  useEffect(() => {
-    fetchChats();
-  }, [fetchChats]);
-
-  // Refetch chats when location changes (e.g., when a new chat is created)
-  useEffect(() => {
-    // If we're in a chat route and we have a user, fetch the chats
-    if (location.pathname.includes("/chat") && user) {
-      fetchChats();
-    }
-  }, [location.pathname, user, fetchChats]);
+  // Get chats from the store
+  const { chats, deleteChat, deleteAllChats, createChat, setActiveChat } =
+    useChatStore();
 
   const handleNewChat = () => {
-    navigate("/chat");
+    const chatId = createChat();
+    navigate(`/chat/${chatId}`);
   };
 
   const handleDeleteClick = (chatId: string, e: React.MouseEvent) => {
@@ -112,28 +75,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     e.preventDefault();
     e.stopPropagation();
 
-    // Set the chat to delete and open the dialog
-    setChatToDelete(chatId);
-    setDeleteDialogOpen(true);
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!chatToDelete) return;
-
+    // Delete directly without confirmation
     try {
-      const response = await fetch(`/api/chat/${chatToDelete}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to delete chat");
-      }
-
-      // Update chats list by removing the deleted chat
-      setChats(chats.filter((chat) => chat.id !== chatToDelete));
+      deleteChat(chatId);
 
       // If we're currently viewing the deleted chat, navigate to home
-      if (location.pathname.includes(`/chat/${chatToDelete}`)) {
+      if (location.pathname.includes(`/chat/${chatId}`)) {
         navigate("/chat");
       }
 
@@ -141,15 +88,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     } catch (error) {
       console.error("Error deleting chat:", error);
       toast.error("Failed to delete chat");
-    } finally {
-      setDeleteDialogOpen(false);
-      setChatToDelete(null);
     }
   };
 
-  const handleDeleteCancel = () => {
-    setDeleteDialogOpen(false);
-    setChatToDelete(null);
+  const handleDeleteAllClick = () => {
+    setDeleteAllDialogOpen(true);
+  };
+
+  const handleDeleteAllConfirm = () => {
+    deleteAllChats();
+    navigate("/chat");
+    toast.success("All chats deleted successfully");
+    setDeleteAllDialogOpen(false);
   };
 
   // Filter chats based on search query
@@ -219,13 +169,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               </SidebarMenuButton>
               <div className="border-b w-full mt-2" />
             </SidebarMenuItem>
-            <Button
-              onClick={handleNewChat}
-              className="w-full flex items-center gap-2"
-            >
-              <PlusIcon className="w-4 h-4" />
-              <span>New Chat</span>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={handleNewChat}
+                className="flex-1 flex items-center gap-2"
+              >
+                <PlusIcon className="w-4 h-4" />
+                <span>New Chat</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleDeleteAllClick}
+                title="Delete all chats"
+                disabled={filteredChats.length === 0}
+              >
+                <TrashIcon className="w-4 h-4" />
+              </Button>
+            </div>
           </SidebarMenu>
           <div className="border-b w-full mt-2">
             <div className="relative flex items-center">
@@ -241,15 +202,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarHeader>
         <SidebarContent>
           <SidebarMenu className="px-2">
-            {isLoadingChats ? (
-              // Loading skeletons
-              Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-2 py-2">
-                  <Skeleton className="w-5 h-5 rounded-full" />
-                  <Skeleton className="h-4 w-full" />
-                </div>
-              ))
-            ) : filteredChats.length > 0 ? (
+            {filteredChats.length > 0 ? (
               // Chat list grouped by date
               Object.entries(groupedChats).map(([groupName, groupChats]) =>
                 groupChats.length > 0 ? (
@@ -363,24 +316,27 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarFooter>
       </Sidebar>
 
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <AlertDialog
+        open={deleteAllDialogOpen}
+        onOpenChange={setDeleteAllDialogOpen}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogTitle>Delete all chats?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete this chat and all its messages. This
-              action cannot be undone.
+              This will permanently delete all your chats and their messages.
+              This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleDeleteCancel}>
+            <AlertDialogCancel onClick={() => setDeleteAllDialogOpen(false)}>
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDeleteConfirm}
+              onClick={handleDeleteAllConfirm}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              Delete All
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

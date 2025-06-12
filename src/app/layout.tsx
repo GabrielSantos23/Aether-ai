@@ -60,7 +60,6 @@ export const metadata: Metadata = {
   },
 };
 
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -70,15 +69,13 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body
         className={cn(
-          "min-h-screen bg-background font-sans antialiased",
+          "  font-sans antialiased overflow-hidden",
           fontSans.variable,
           fontHeading.variable,
           fontMono.variable
         )}
       >
-        <RootProviders>
-          {children}
-        </RootProviders>
+        <RootProviders>{children}</RootProviders>
       </body>
     </html>
   );
