@@ -55,3 +55,36 @@ export const verification = pgTable("verification", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const chat = pgTable("chat", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  parentId: text("parent_id"),
+  metadata: json("metadata"),
+});
+
+// Message table
+export const message = pgTable("message", {
+  id: text("id").primaryKey(),
+  chatId: text("chat_id")
+    .notNull()
+    .references(() => chat.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  role: text("role").notNull(), // 'user' | 'assistant'
+  content: json("content").notNull(), // Supports multimodal: text, image, etc.
+  webSearch: boolean("web_search").default(false).notNull(),
+  thinking: boolean("thinking").default(false).notNull(),
+  reasoning: text("reasoning"), // Reasoning process (optional)
+  sources: json("sources"), // Web search sources (optional)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  model: text("model"), // Model used (optional)
+  imageAnalysis: json("image_analysis"), // Image analysis results (optional)
+});

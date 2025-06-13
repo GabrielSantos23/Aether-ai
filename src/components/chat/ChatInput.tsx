@@ -13,7 +13,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, Brain, Globe, Paperclip } from "lucide-react";
 import {
   getAllModelNames,
   findModelConfig,
@@ -27,6 +27,9 @@ import {
   SelectTrigger,
   SelectItem,
 } from "../ui/select";
+import { ChatTitle } from "./title/chattitle";
+import { ShineBorder } from "../ui/shine-border";
+import { Label } from "../ui/label";
 
 interface ChatInputProps {
   input: string;
@@ -43,6 +46,8 @@ interface ChatInputProps {
   setUseThinking: Dispatch<SetStateAction<boolean>>;
   selectedModel: string;
   setSelectedModel: Dispatch<SetStateAction<string>>;
+  onImageChange?: (files: FileList | null) => void;
+  imageFiles?: FileList | null;
 }
 
 export function ChatInput({
@@ -58,10 +63,14 @@ export function ChatInput({
   setUseThinking,
   selectedModel,
   setSelectedModel,
+  onImageChange,
+  imageFiles,
 }: ChatInputProps) {
   const navigate = useNavigate();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isMounted, setIsMounted] = useState(false);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
 
   const webSearchCompatibleModels = getWebSearchCompatibleModels();
   const thinkingCompatibleModels = getThinkingCompatibleModels();
@@ -116,6 +125,22 @@ export function ChatInput({
     );
   }, [error, isMounted]);
 
+  // Generate image previews when imageFiles changes
+  useEffect(() => {
+    if (imageFiles && imageFiles.length > 0) {
+      const urls = Array.from(imageFiles).map((file) =>
+        URL.createObjectURL(file)
+      );
+      setImagePreviews(urls);
+      // Cleanup: revoke object URLs when files change or component unmounts
+      return () => {
+        urls.forEach((url) => URL.revokeObjectURL(url));
+      };
+    } else {
+      setImagePreviews([]);
+    }
+  }, [imageFiles]);
+
   const navigateToSettings = () => {
     navigate("/settings");
   };
@@ -129,10 +154,11 @@ export function ChatInput({
   }
 
   return (
-    <div>
+    <div className="relative">
       <form
         onSubmit={handleSubmit}
         className="flex items-start gap-4 max-w-4xl mx-auto flex-col"
+        encType="multipart/form-data"
       >
         <textarea
           ref={textareaRef}
@@ -146,16 +172,45 @@ export function ChatInput({
           rows={1}
         />
 
+        {imagePreviews.length > 0 && (
+          <div className="mb-2 flex gap-2">
+            {imagePreviews.map((url, idx) => (
+              <img
+                key={idx}
+                src={url}
+                alt={`preview-${idx}`}
+                className="max-w-[120px] max-h-[120px] rounded border"
+              />
+            ))}
+          </div>
+        )}
         <div className="flex flex-col gap-2 w-full items-center">
-          <div className="flex justify-between mb-2 items-center w-full">
-            <div className="flex gap-2">
-              <label
-                className={`flex items-center gap-2 bg-card rounded-md p-2 border border-border ${
-                  supportsWebSearch
-                    ? "cursor-pointer hover:bg-accent/20"
-                    : "opacity-50 cursor-not-allowed"
-                }`}
-                id="web-search"
+          <div className="flex justify-between items-center w-full">
+            <div className="flex gap-2 items-center">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="flex items-center gap-2"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading}
+              >
+                <Paperclip className="w-4 h-4" />
+              </Button>
+              <input
+                type="file"
+                accept="image/*"
+                multiple={false}
+                ref={fileInputRef}
+                onChange={(e) => {
+                  if (onImageChange) onImageChange(e.target.files);
+                }}
+                className="hidden"
+                disabled={isLoading}
+              />
+              <Label
+                htmlFor="web-search"
+                className="flex items-center gap-3 rounded-lg border p-3 hover:bg-background cursor-pointer has-[[data-state=checked]]:border-primary/20 has-[[data-state=checked]]:bg-background"
               >
                 <Checkbox
                   checked={useWebSearch}
@@ -165,17 +220,21 @@ export function ChatInput({
                     }
                   }}
                   id="web-search"
+                  className="sr-only"
                   disabled={!supportsWebSearch || isLoading}
                 />
-
+                <span
+                  className={`text-xs ${
+                    useWebSearch ? "text-yellow-500" : "text-muted-foreground"
+                  }`}
+                >
+                  <Globe className="w-4 h-4" />
+                </span>
                 <span className="text-xs">Web Search</span>
-              </label>
-              <label
-                className={`flex items-center gap-2 bg-card rounded-md p-2 border border-border ${
-                  supportsThinking
-                    ? "cursor-pointer hover:bg-accent/20"
-                    : "opacity-50 cursor-not-allowed"
-                }`}
+              </Label>
+
+              <Label
+                className="hover:bg-background flex items-start gap-3 rounded-lg border p-3 has-[[aria-checked=true]]:border-primary/20 has-[[aria-checked=true]]:bg-background dark:has-[[aria-checked=true]]:border-primary/20 dark:has-[[aria-checked=true]]:bg-background"
                 id="reasoning"
               >
                 <Checkbox
@@ -191,10 +250,18 @@ export function ChatInput({
                     isLoading ||
                     selectedModel === "Deepseek R1 0528"
                   }
+                  className="sr-only"
                 />
 
-                <span className="text-xs">Reasoning</span>
-              </label>
+                <span
+                  className={`text-xs ${
+                    useThinking ? "text-yellow-500" : "text-muted-foreground"
+                  }`}
+                >
+                  <Brain className="w-4 h-4" />
+                </span>
+                <span>Reasoning</span>
+              </Label>
             </div>
             <div className="flex items-center gap-2 ">
               <div>

@@ -8,6 +8,7 @@ export type Chat = {
   createdAt: string;
   updatedAt: string;
   messages: Message[];
+  parentId?: string; // Parent chat ID for branched chats
 };
 
 export type Message = {
@@ -21,7 +22,7 @@ interface ChatState {
   chats: Chat[];
   activeChat: string | null;
   setActiveChat: (chatId: string | null) => void;
-  createChat: () => string;
+  createChat: (parentId?: string) => string;
   updateChatTitle: (chatId: string, title: string) => void;
   addMessage: (
     chatId: string,
@@ -32,6 +33,7 @@ interface ChatState {
   deleteAllChats: () => void;
   getChat: (chatId: string) => Chat | undefined;
   getAllChats: () => Chat[];
+  getChildChats: (parentId: string) => Chat[];
 }
 
 export const useChatStore = create<ChatState>()(
@@ -42,7 +44,7 @@ export const useChatStore = create<ChatState>()(
 
       setActiveChat: (chatId) => set({ activeChat: chatId }),
 
-      createChat: () => {
+      createChat: (parentId) => {
         const id = uuidv4();
         const now = new Date().toISOString();
 
@@ -55,6 +57,7 @@ export const useChatStore = create<ChatState>()(
               createdAt: now,
               updatedAt: now,
               messages: [],
+              parentId,
             },
           ],
           activeChat: id,
@@ -118,6 +121,9 @@ export const useChatStore = create<ChatState>()(
       getChat: (chatId) => get().chats.find((chat) => chat.id === chatId),
 
       getAllChats: () => get().chats,
+
+      getChildChats: (parentId) =>
+        get().chats.filter((chat) => chat.parentId === parentId),
     }),
     {
       name: "chat-storage",

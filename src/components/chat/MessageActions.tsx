@@ -8,7 +8,21 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { CopyIcon, EditIcon, RefreshCw, GitBranchPlusIcon } from "lucide-react";
+import {
+  CopyIcon,
+  EditIcon,
+  RefreshCw,
+  GitBranchPlusIcon,
+  CheckIcon,
+  ChevronDownIcon,
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { getAllModelNames } from "@/lib/models";
 
 interface MessageActionsProps {
   role: "user" | "assistant";
@@ -18,6 +32,7 @@ interface MessageActionsProps {
   onRetry?: () => void;
   onEdit?: (content: string) => void;
   onBranchOff?: () => void;
+  onModelChange?: (messageId: string, newModel: string) => void;
 }
 
 export function MessageActions({
@@ -28,6 +43,7 @@ export function MessageActions({
   onRetry,
   onEdit,
   onBranchOff,
+  onModelChange,
 }: MessageActionsProps) {
   const [copied, setCopied] = useState(false);
 
@@ -40,7 +56,6 @@ export function MessageActions({
   return (
     <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2 text-xs text-muted-foreground">
       <TooltipProvider>
-        {/* Copy button for both user and assistant */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -49,8 +64,11 @@ export function MessageActions({
               className="h-6 px-2 text-muted-foreground hover:text-foreground"
               onClick={handleCopy}
             >
-              <CopyIcon className="h-3.5 w-3.5 mr-1" />
-              {copied && <span className="text-xs text-primary">Copied!</span>}
+              {copied ? (
+                <CheckIcon className="h-3.5 w-3.5 mr-1" />
+              ) : (
+                <CopyIcon className="h-3.5 w-3.5 mr-1" />
+              )}
             </Button>
           </TooltipTrigger>
           <TooltipContent>
@@ -133,9 +151,31 @@ export function MessageActions({
         )}
       </TooltipProvider>
       {role === "assistant" && model && (
-        <span className="mr-2 px-2 py-1 bg-muted rounded-md text-xs">
-          {model}
-        </span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <span className="mr-2 px-2 py-1 bg-muted rounded-md text-xs flex items-center gap-1 cursor-pointer hover:bg-muted/80">
+              {model}
+              <ChevronDownIcon className="h-3 w-3" />
+            </span>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="bottom" align="start" className="w-56">
+            {getAllModelNames().map((modelName) => (
+              <DropdownMenuItem
+                key={modelName}
+                className={
+                  modelName === model ? "font-semibold bg-accent/30" : ""
+                }
+                onClick={() => {
+                  if (modelName !== model && onModelChange) {
+                    onModelChange(messageId, modelName);
+                  }
+                }}
+              >
+                {modelName}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
     </div>
   );

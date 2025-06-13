@@ -53,7 +53,7 @@ export function ScrollToBottomButton({
   }
 
   return (
-    <div className="fixed bottom-38 left-1/2 transform -translate-x-1/2 z-20">
+    <div className="bottom-38 left-1/2 transform -translate-x-1/2 z-20">
       <Button
         onClick={scrollToBottom}
         className="rounded-full px-4 py-2 shadow-lg bg-card/50 backdrop-blur-lg text-primary hover:bg-card/80 border cursor-pointer transition-all flex items-center gap-2"

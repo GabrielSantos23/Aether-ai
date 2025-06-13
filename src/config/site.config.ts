@@ -1,17 +1,18 @@
 import { SiteConfig } from "@/types";
 
 export const siteConfig: SiteConfig = {
-  name: "NexFaster",
-  title: "Next.js + React Router",
-  description: "A minimal template showcasing React Router integration within Next.js for client-side routing with clean documentation-style pages",
-  origin: "https://nexfaster.rdsx.dev",
+  name: "Aether AI",
+  title: "Aether AI",
+  description:
+    "Introducing Aether AI - an advanced chatbot that can answer questions and help you with your tasks.",
+  origin: "https://aether.ai",
   keywords: [
     "React Router",
     "Next.js",
     "Client-side routing",
     "React",
     "TypeScript",
-    "Template"
+    "Template",
   ],
   og: "https://nexfaster.rdsx.dev/og.png",
   creator: {
@@ -21,5 +22,5 @@ export const siteConfig: SiteConfig = {
   socials: {
     github: "https://github.com/rudrodip/nexfaster",
     x: "https://x.com/rds_agi",
-  }
-}
+  },
+};

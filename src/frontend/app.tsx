@@ -16,6 +16,8 @@ import { LoginForm } from "@/components/auth/SignInForm";
 import { UserProfile } from "@/components/auth/UserProfile";
 import { APIKeySettings } from "@/components/settings/APIKeySettings";
 import { RightSidebar } from "@/components/sidebar/RightSidebar";
+import { useChatSync } from "@/hooks/useChatSync";
+import { AuthProvider } from "@/components/providers/AuthProvider";
 
 function useIsAuthPage() {
   const location = useLocation();
@@ -67,6 +69,12 @@ function LoadingFallback() {
   return <div className="p-8 text-center">Loading...</div>;
 }
 
+function ChatSyncProvider({ children }: { children: React.ReactNode }) {
+  const { isInitialized, isSyncing } = useChatSync();
+
+  return <>{children}</>;
+}
+
 function AppRoutes() {
   const isAuthPage = useIsAuthPage();
 
@@ -115,7 +123,9 @@ function AppRoutes() {
 function AppWithProviders() {
   return (
     <CommandProvider>
-      <AppRoutes />
+      <ChatSyncProvider>
+        <AppRoutes />
+      </ChatSyncProvider>
       <Toaster className="bg-popover/50 backdrop-blur-md" />
     </CommandProvider>
   );
@@ -124,7 +134,9 @@ function AppWithProviders() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AppWithProviders />
+      <AuthProvider>
+        <AppWithProviders />
+      </AuthProvider>
     </BrowserRouter>
   );
 }

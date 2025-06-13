@@ -10,8 +10,14 @@ export const maxDuration = 30;
 
 export async function POST(req: Request) {
   try {
-    const { messages, apiKey, selectedModel, useWebSearch, useThinking } =
-      await req.json();
+    const {
+      messages,
+      apiKey,
+      selectedModel,
+      useWebSearch,
+      useThinking,
+      experimental_attachments,
+    } = await req.json();
 
     // Get model configuration based on the selected model
     const modelConfig = findModelConfig(selectedModel);
@@ -29,6 +35,7 @@ export async function POST(req: Request) {
       headerKey,
       supportsWebSearch,
       supportsThinking,
+      viewImage,
     } = modelConfig;
 
     // Check for API key
@@ -46,9 +53,32 @@ export async function POST(req: Request) {
     const effectiveWebSearch = supportsWebSearch && useWebSearch;
     const effectiveThinking = supportsThinking && useThinking;
 
+    // --- Multimodal image support ---
+    let patchedMessages = messages;
+    if (
+      viewImage &&
+      Array.isArray(messages) &&
+      Array.isArray(experimental_attachments) &&
+      experimental_attachments.length > 0
+    ) {
+      // Only patch the last user message
+      const lastIdx = messages.length - 1;
+      const lastMsg = messages[lastIdx];
+      if (lastMsg && lastMsg.role === "user") {
+        const newContent = [
+          { type: "text", text: lastMsg.content },
+          // For now, only support the first image
+          { type: "image", image: experimental_attachments[0] },
+        ];
+        patchedMessages = [
+          ...messages.slice(0, lastIdx),
+          { ...lastMsg, content: newContent },
+        ];
+      }
+    }
     // Configure model options
     const streamOptions: any = {
-      messages,
+      messages: patchedMessages,
     };
 
     // Set up system prompt

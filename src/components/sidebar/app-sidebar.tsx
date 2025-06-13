@@ -62,8 +62,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [deleteAllDialogOpen, setDeleteAllDialogOpen] = useState(false);
 
   // Get chats from the store
-  const { chats, deleteChat, deleteAllChats, createChat, setActiveChat } =
-    useChatStore();
+  const {
+    chats,
+    deleteChat,
+    deleteAllChats,
+    createChat,
+    setActiveChat,
+    getChildChats,
+  } = useChatStore();
 
   const handleNewChat = () => {
     const chatId = createChat();
@@ -103,11 +109,34 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   };
 
   // Filter chats based on search query
-  const filteredChats = searchQuery
-    ? chats.filter((chat) =>
-        chat.title.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : chats;
+  const filteredChats = useMemo(() => {
+    if (!searchQuery) return chats;
+
+    // Filter both parent and child chats based on search query
+    const matchingChats = chats.filter((chat) =>
+      chat.title.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    // Also include parent chats of any matching child chats
+    const matchingChildChats = matchingChats.filter((chat) => chat.parentId);
+    const parentIds = matchingChildChats.map((chat) => chat.parentId);
+
+    // Get unique parent IDs and find their chats
+    const uniqueParentIds = [...new Set(parentIds)];
+    const matchingParents = chats.filter((chat) =>
+      uniqueParentIds.includes(chat.id)
+    );
+
+    // Combine all matching chats
+    return [...matchingChats, ...matchingParents];
+  }, [chats, searchQuery]);
+
+  // Get only root chats (those without parents)
+  const rootChats = useMemo(() => {
+    return searchQuery
+      ? filteredChats.filter((chat) => !chat.parentId)
+      : filteredChats.filter((chat) => !chat.parentId);
+  }, [filteredChats]);
 
   // Group chats by their activity date (using updatedAt)
   const groupedChats = useMemo(() => {
@@ -119,7 +148,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       Older: [],
     };
 
-    filteredChats.forEach((chat) => {
+    rootChats.forEach((chat) => {
       // Use updatedAt for the most recent activity
       const date = parseISO(chat.updatedAt);
 
@@ -145,7 +174,94 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     });
 
     return groups;
-  }, [filteredChats]);
+  }, [rootChats]);
+
+  // Check if a chat should show its children when searching
+  const shouldShowChildren = (chat: Chat) => {
+    if (!searchQuery) return true;
+
+    // Get all children of this chat
+    const children = chats.filter((c) => c.parentId === chat.id);
+
+    // Check if any children match the search query
+    return children.some((child) =>
+      child.title.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  };
+
+  // Custom chat render function for search results
+  const renderChatItem = (chat: Chat) => {
+    const childChats = chats.filter((c) => c.parentId === chat.id);
+    const visibleChildChats = searchQuery
+      ? childChats.filter((c) =>
+          c.title.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      : childChats;
+
+    return (
+      <div key={chat.id} className="group">
+        <SidebarMenuItem className="relative group/item">
+          <NavLink to={`/chat/${chat.id}`} className="w-full">
+            <SidebarMenuButton
+              className={`w-full justify-start pr-8 ${
+                searchQuery &&
+                chat.title.toLowerCase().includes(searchQuery.toLowerCase())
+                  ? "bg-accent/30"
+                  : ""
+              }`}
+            >
+              <span className="truncate">{chat.title}</span>
+            </SidebarMenuButton>
+          </NavLink>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover/item:opacity-100 hover:text-primary text-muted-foreground"
+            onClick={(e) => handleDeleteClick(chat.id, e)}
+            aria-label="Delete chat"
+          >
+            <XIcon className="w-4 h-4 " />
+          </Button>
+        </SidebarMenuItem>
+
+        {/* Render child chats if any */}
+        {visibleChildChats.length > 0 && (
+          <div className="pl-4 ml-2 border-l border-secondary">
+            {visibleChildChats.map((childChat) => (
+              <SidebarMenuItem
+                key={childChat.id}
+                className="relative group/item"
+              >
+                <NavLink to={`/chat/${childChat.id}`} className="w-full">
+                  <SidebarMenuButton
+                    className={`w-full justify-start pr-8 text-sm ${
+                      searchQuery &&
+                      childChat.title
+                        .toLowerCase()
+                        .includes(searchQuery.toLowerCase())
+                        ? "bg-accent/30"
+                        : ""
+                    }`}
+                  >
+                    <span className="truncate">{childChat.title}</span>
+                  </SidebarMenuButton>
+                </NavLink>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover/item:opacity-100 hover:text-primary text-muted-foreground"
+                  onClick={(e) => handleDeleteClick(childChat.id, e)}
+                  aria-label="Delete chat"
+                >
+                  <XIcon className="w-3 h-3 " />
+                </Button>
+              </SidebarMenuItem>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -204,35 +320,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarMenu className="px-2">
             {filteredChats.length > 0 ? (
               // Chat list grouped by date
-              Object.entries(groupedChats).map(([groupName, groupChats]) =>
-                groupChats.length > 0 ? (
-                  <div key={groupName} className="mb-4">
-                    <h3 className="text-xs font-medium text-muted-foreground mb-2 pl-2">
-                      {groupName}
-                    </h3>
-                    {groupChats.map((chat) => (
-                      <SidebarMenuItem
-                        key={chat.id}
-                        className="relative group/item"
-                      >
-                        <NavLink to={`/chat/${chat.id}`} className="w-full">
-                          <SidebarMenuButton className="w-full justify-start pr-8">
-                            <span className="truncate">{chat.title}</span>
-                          </SidebarMenuButton>
-                        </NavLink>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover/item:opacity-100 hover:text-primary text-muted-foreground"
-                          onClick={(e) => handleDeleteClick(chat.id, e)}
-                          aria-label="Delete chat"
-                        >
-                          <XIcon className="w-4 h-4 " />
-                        </Button>
-                      </SidebarMenuItem>
-                    ))}
-                  </div>
-                ) : null
+              Object.entries(groupedChats).map(
+                ([groupName, groupChats]: [string, Chat[]]) =>
+                  groupChats.length > 0 ? (
+                    <div key={groupName} className="mb-4">
+                      <h3 className="text-xs font-medium text-muted-foreground mb-2 pl-2">
+                        {groupName}
+                      </h3>
+                      {groupChats.map((chat: Chat) => renderChatItem(chat))}
+                    </div>
+                  ) : null
               )
             ) : searchQuery ? (
               // No search results
