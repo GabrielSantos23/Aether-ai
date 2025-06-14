@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect } from "react";
+import React, { useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -46,7 +46,7 @@ interface MessageListProps {
   setEditingContent?: React.Dispatch<React.SetStateAction<string>>;
 }
 
-export function MessageList({
+const MessageListComponent = ({
   messages,
   isLoading,
   messageToSourcesMap,
@@ -63,7 +63,7 @@ export function MessageList({
   editingMessageId,
   editingContent,
   setEditingContent,
-}: MessageListProps) {
+}: MessageListProps) => {
   const rightSidebar = useSidebarWithSide("right");
   const { setActiveSources } = useSources();
 
@@ -633,4 +633,6 @@ export function MessageList({
         )}
     </div>
   );
-}
+};
+
+export const MessageList = React.memo(MessageListComponent);

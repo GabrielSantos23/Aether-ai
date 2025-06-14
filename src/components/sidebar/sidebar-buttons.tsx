@@ -1,10 +1,28 @@
-import { Plus, Search, SettingsIcon } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Globe,
+  Lock,
+  LockOpen,
+  Plus,
+  Search,
+  SettingsIcon,
+  Share2,
+  UserPlus,
+} from "lucide-react";
 import { Button } from "../ui/button";
 import { SidebarTrigger, useSidebar, useSidebarWithSide } from "../ui/sidebar";
 import ThemeToggler from "@/components/theme/toggler";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
-import React from "react";
-import { NavLink } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { NavLink, useParams } from "react-router-dom";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { Label } from "../ui/label";
+import { Input } from "../ui/input";
+import { Switch } from "../ui/switch";
+import { useAuth } from "@/components/providers/AuthProvider";
+import { toast } from "sonner";
+import { useChatStore } from "@/frontend/stores/ChatStore";
 
 export const CommandDialogContext = React.createContext<{
   setOpen: (open: boolean) => void;
@@ -104,6 +122,118 @@ export function SidebarButtonsRight() {
   const rightSidebar = useSidebarWithSide("right");
   const isSidebarClosed = isMobile ? !openMobile : !open;
   const isRightSidebarOpen = rightSidebar.open;
+  const [isPublic, setIsPublic] = useState(false);
+  const [chatUrl, setChatUrl] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [isCreator, setIsCreator] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const { id: chatId } = useParams<{ id: string }>();
+  const { data: session } = useAuth();
+  const userId = session?.user?.id;
+  const { getChat, updateChatVisibility } = useChatStore();
+  const currentChat = chatId ? getChat(chatId) : null;
+
+  useEffect(() => {
+    // Reset states when chat changes
+    setIsPublic(false);
+    setIsCreator(false);
+    setChatUrl("");
+
+    if (!chatId || !userId) return;
+
+    const fetchChatStatus = async () => {
+      try {
+        setIsLoading(true);
+        const response = await fetch(`/api/chats/${chatId}/public-status`);
+        if (response.ok) {
+          const data = await response.json();
+          setIsPublic(data.isPublic);
+          setIsCreator(data.isCreator);
+
+          if (data.isPublic) {
+            const baseUrl = window.location.origin;
+            setChatUrl(`${baseUrl}/chat/${chatId}`);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching chat status:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchChatStatus();
+  }, [chatId, userId]);
+
+  const handleTogglePublic = async () => {
+    if (!chatId || !userId || !isCreator) return;
+
+    try {
+      setIsLoading(true);
+      const newPublicState = !isPublic;
+
+      const response = await fetch(`/api/chats/${chatId}/toggle-public`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ isPublic: newPublicState }),
+      });
+
+      if (response.ok) {
+        // Update local state
+        setIsPublic(newPublicState);
+
+        // Update chat store
+        updateChatVisibility(chatId, newPublicState);
+
+        if (newPublicState) {
+          const baseUrl = window.location.origin;
+          setChatUrl(`${baseUrl}/chat/${chatId}`);
+          toast.success("Chat is now public and can be shared");
+        } else {
+          setChatUrl("");
+          toast.success("Chat is now private");
+        }
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "Failed to update chat visibility");
+      }
+    } catch (error) {
+      console.error("Error toggling chat visibility:", error);
+      toast.error("Failed to update chat visibility");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard
+      .writeText(chatUrl)
+      .then(() => {
+        setCopied(true);
+        toast.success("Link copied to clipboard");
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch((err) => {
+        console.error("Failed to copy: ", err);
+        try {
+          const textArea = document.createElement("textarea");
+          textArea.value = chatUrl;
+          document.body.appendChild(textArea);
+          textArea.focus();
+          textArea.select();
+          document.execCommand("copy");
+          document.body.removeChild(textArea);
+          setCopied(true);
+          toast.success("Link copied to clipboard");
+          setTimeout(() => setCopied(false), 2000);
+        } catch (execErr) {
+          console.error("Fallback copy failed: ", execErr);
+          toast.error("Failed to copy link");
+        }
+      });
+  };
 
   const buttonVariants = {
     hidden: { opacity: 0, x: 20 },
@@ -180,6 +310,112 @@ export function SidebarButtonsRight() {
             </motion.div>
           )}
         </AnimatePresence>
+        {!isRightSidebarOpen && chatId && (
+          <div className="absolute top-0 right-22 bg-card rounded-md border">
+            <Popover>
+              <PopoverTrigger>
+                <Button
+                  variant="ghost"
+                  className="bg-card"
+                  disabled={isLoading}
+                >
+                  {isPublic ? (
+                    <LockOpen className="h-4 w-4" />
+                  ) : (
+                    <Lock className="h-4 w-4" />
+                  )}
+                  <span className="sr-only">Share Chat</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-96 bg-card">
+                <div className="grid gap-4">
+                  <div className="space-y-2">
+                    <h4 className="font-medium leading-none">Share Chat</h4>
+                    <p className="text-sm text-muted-foreground">
+                      {isPublic
+                        ? "Anyone with the link can view this chat."
+                        : "This chat is private."}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <div className="grid flex-1 gap-2">
+                      <Label htmlFor="link" className="sr-only">
+                        Link
+                      </Label>
+                      <Input
+                        id="link"
+                        value={chatUrl}
+                        readOnly
+                        className="h-9 bg-card border"
+                        disabled={!isPublic}
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      variant="outline"
+                      className="px-3 bg-background border hover:bg-background"
+                      onClick={handleCopy}
+                      disabled={!isPublic}
+                    >
+                      <span className="sr-only">Copy</span>
+                      {copied ? (
+                        <Check className="h-4 w-4" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t border-border" />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2 pt-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        {isPublic ? (
+                          <Globe className="h-4 w-4 text-green-400" />
+                        ) : (
+                          <Lock className="h-4 w-4 text-yellow-400" />
+                        )}
+                        <Label htmlFor="public-access">
+                          {isPublic ? "Public Access" : "Private Access"}
+                        </Label>
+                      </div>
+                      <Switch
+                        id="public-access"
+                        checked={isPublic}
+                        onCheckedChange={handleTogglePublic}
+                        className={isPublic ? "bg-green-600" : "bg-gray-600"}
+                        disabled={!isCreator || isLoading}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground px-1">
+                      {!isCreator
+                        ? "Only the creator can change chat visibility."
+                        : isPublic
+                        ? "This chat is visible to anyone with the link."
+                        : "Only invited members can access this chat."}
+                    </p>
+                  </div>
+
+                  {!isCreator && (
+                    <div className="pt-2">
+                      <p className="text-sm text-amber-500">
+                        You are viewing a shared chat. You cannot modify its
+                        visibility.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+        )}
       </LayoutGroup>
     </div>
   );

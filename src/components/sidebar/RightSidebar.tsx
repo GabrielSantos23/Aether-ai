@@ -32,7 +32,6 @@ export function RightSidebar({
     <Sidebar side="right" {...props}>
       <SidebarRail />
       <SidebarContent>
-        <SidebarHeader className="flex items-center justify-between"></SidebarHeader>
         <div className="flex-1 overflow-hidden">
           <SourceMessages sources={sources} />
         </div>

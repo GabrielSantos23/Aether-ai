@@ -61,11 +61,29 @@ export const chat = pgTable("chat", {
   userId: text("user_id")
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
+  creatorId: text("creator_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   parentId: text("parent_id"),
   metadata: json("metadata"),
+  isPublic: boolean("is_public").default(false).notNull(),
+});
+
+// Chat access permissions table
+export const chatAccess = pgTable("chat_access", {
+  id: text("id").primaryKey(),
+  chatId: text("chat_id")
+    .notNull()
+    .references(() => chat.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  canWrite: boolean("can_write").default(false).notNull(), // Whether the user can send messages
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 // Message table
@@ -88,3 +106,13 @@ export const message = pgTable("message", {
   model: text("model"), // Model used (optional)
   imageAnalysis: json("image_analysis"), // Image analysis results (optional)
 });
+
+// Add messages schema
+export const messages = {
+  id: "id",
+  chatId: "chat_id",
+  content: "content",
+  role: "role",
+  createdAt: "created_at",
+  userId: "user_id",
+};

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, ChangeEvent, useRef } from "react";
+import { useState, useEffect, ChangeEvent, useRef, useMemo } from "react";
 import { useChat } from "@ai-sdk/react";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
@@ -17,6 +17,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ChatTitle } from "./title/chattitle";
 import { siteConfig } from "@/config/site.config";
 import { ShineBorder } from "../ui/shine-border";
+import { saveMessage } from "@/lib/message-service";
+import { useAuth } from "@/components/providers/AuthProvider";
 
 function errorHandler(error: unknown) {
   if (error == null) {
@@ -42,7 +44,7 @@ interface Source {
 }
 
 export function Chat() {
-  const { id: chatId } = useParams<{ id: string }>();
+  const { id: chatIdParam } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [useWebSearch, setUseWebSearch] = useState<boolean>(false);
   const [useThinking, setUseThinking] = useState<boolean>(false);
@@ -66,6 +68,9 @@ export function Chat() {
     Record<string, string>
   >({});
   const [imageFiles, setImageFiles] = useState<FileList | null>(null);
+  const [canWrite, setCanWrite] = useState<boolean>(true);
+  const { data: session } = useAuth();
+  const userId = session?.user?.id;
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -89,6 +94,9 @@ export function Chat() {
   const effectiveWebSearch = supportsWebSearch && useWebSearch;
   const effectiveThinking = supportsThinking && useThinking;
 
+  // Add local state for currentChatId
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+
   // Initialize chat or redirect if invalid ID
   useEffect(() => {
     const initializeChat = async () => {
@@ -98,14 +106,17 @@ export function Chat() {
       setMessageToReasoningMap({});
       setReasoningUpdateTimestamps({});
       setSources([]);
+      setCanWrite(true); // Reset write permission
 
-      if (chatId) {
-        const existingChat = getChat(chatId);
+      if (chatIdParam) {
+        const existingChat = getChat(chatIdParam);
         if (!existingChat) {
           // If the chat doesn't exist (invalid ID), redirect to a new chat
           navigate("/chat");
+          setCurrentChatId(null);
         } else {
-          setActiveChat(chatId);
+          setActiveChat(chatIdParam);
+          setCurrentChatId(chatIdParam);
 
           // Convert stored messages to AI SDK format
           const initialMsgs = existingChat.messages.map((msg) => ({
@@ -117,13 +128,35 @@ export function Chat() {
 
           setInitialMessages(initialMsgs);
           setIsInitialized(true);
+
+          // Check if the user has write permission for this chat
+          if (userId) {
+            try {
+              const response = await fetch(
+                `/api/chats/${chatIdParam}/permissions`
+              );
+              if (response.ok) {
+                const { canWrite: hasWritePermission, isCreator } =
+                  await response.json();
+                setCanWrite(hasWritePermission || isCreator);
+              }
+            } catch (error) {
+              console.error("Error checking chat permissions:", error);
+            }
+          } else {
+            // If no user is logged in, they can't write
+            setCanWrite(false);
+          }
         }
       } else {
         // No chatId in URL means we're on the /chat route (new chat)
         // Don't create a chat yet - wait for the first message
         setActiveChat(null);
+        setCurrentChatId(null);
         setInitialMessages([]);
         setIsInitialized(true);
+        // New chat always has write permission for the creator
+        setCanWrite(!!userId);
       }
     };
 
@@ -137,7 +170,7 @@ export function Chat() {
           ? null
           : pathParts[pathParts.length - 1];
 
-      if (newChatId !== chatId) {
+      if (newChatId !== chatIdParam) {
         setIsInitialized(false);
         // Let the effect handle the rest
       }
@@ -151,11 +184,11 @@ export function Chat() {
       setIsInitialized(false);
       setInitialMessages([]);
     };
-  }, [chatId, navigate, getChat, setActiveChat]);
+  }, [chatIdParam, navigate, getChat, setActiveChat, userId]);
 
   // Load messageToModelMap from localStorage on component mount
   useEffect(() => {
-    const savedModelMap = localStorage.getItem(`chat_models_${chatId}`);
+    const savedModelMap = localStorage.getItem(`chat_models_${currentChatId}`);
     if (savedModelMap) {
       try {
         const parsedModelMap = JSON.parse(savedModelMap);
@@ -164,17 +197,17 @@ export function Chat() {
         console.error("Failed to parse saved model map:", e);
       }
     }
-  }, [chatId]);
+  }, [currentChatId]);
 
   // Save messageToModelMap to localStorage whenever it changes
   useEffect(() => {
-    if (chatId && Object.keys(messageToModelMap).length > 0) {
+    if (currentChatId && Object.keys(messageToModelMap).length > 0) {
       localStorage.setItem(
-        `chat_models_${chatId}`,
+        `chat_models_${currentChatId}`,
         JSON.stringify(messageToModelMap)
       );
     }
-  }, [messageToModelMap, chatId]);
+  }, [messageToModelMap, currentChatId]);
 
   // Track which message is being replaced (for model change)
   const [replaceAssistantMessageId, setReplaceAssistantMessageId] = useState<
@@ -203,7 +236,7 @@ export function Chat() {
       console.log("Response received, waiting for sources...");
     },
     onFinish: async (message) => {
-      if (message.role === "assistant" && chatId) {
+      if (message.role === "assistant" && currentChatId) {
         if (replaceAssistantMessageId) {
           // Remove the last user message if it's a duplicate
           let updatedMessages = [...messages];
@@ -227,7 +260,7 @@ export function Chat() {
             aiSdkSetMessages(updatedMessages);
           }
           // Update in store
-          const chat = getChat(chatId);
+          const chat = getChat(currentChatId);
           if (chat) {
             let updatedStoreMessages = [...chat.messages];
             if (
@@ -249,7 +282,7 @@ export function Chat() {
               };
               useChatStore.setState((state) => ({
                 chats: state.chats.map((c) =>
-                  c.id === chatId
+                  c.id === currentChatId
                     ? {
                         ...c,
                         messages: updatedStoreMessages,
@@ -267,11 +300,21 @@ export function Chat() {
           setReplaceAssistantMessageId(null);
         } else {
           // Normal flow: add a new assistant message
-          addMessage(chatId, message.content, "assistant");
+          addMessage(currentChatId, message.content, "assistant");
           setMessageToModelMap((prev) => ({
             ...prev,
             [message.id]: selectedModel,
           }));
+
+          // Save assistant message to database - don't await to keep UI responsive
+          saveMessage({
+            chatId: currentChatId,
+            content: message.content,
+            role: "assistant",
+          }).catch((err) => {
+            // Just log the error, don't block the UI
+            console.error("Failed to save assistant message to database:", err);
+          });
         }
         extractSourcesFromRawContent(message.content, message.id);
 
@@ -351,18 +394,25 @@ export function Chat() {
         }
       }
     },
-    id: chatId || undefined,
+    id: currentChatId || undefined,
   });
 
   // Custom handleSubmit that integrates with our chat store
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if ((!input.trim() && !imageFiles) || !isInitialized || isLoading) return;
-    let currentChatId = chatId;
-    if (!currentChatId) {
-      currentChatId = createChat();
-      window.history.pushState({}, "", `/chat/${currentChatId}`);
-      setActiveChat(currentChatId);
+    if (
+      (!input.trim() && !imageFiles) ||
+      !isInitialized ||
+      isLoading ||
+      !canWrite
+    )
+      return;
+    let chatId = currentChatId;
+    if (!chatId) {
+      chatId = createChat();
+      window.history.pushState({}, "", `/chat/${chatId}`);
+      setActiveChat(chatId);
+      setCurrentChatId(chatId);
     }
     // Prepare message content for multimodal (text + image)
     let messageContent: any[] = [];
@@ -377,24 +427,34 @@ export function Chat() {
     }
     // Save the message to our store (for now, just save text or multimodal)
     let messageId;
+    let content;
     if (messageContent.length === 1 && messageContent[0].type === "text") {
-      messageId = addMessage(currentChatId, input, "user");
+      content = input;
+      messageId = addMessage(chatId, content, "user");
     } else {
       // Save a JSON string for multimodal content for local display
-      messageId = addMessage(
-        currentChatId,
-        JSON.stringify(messageContent),
-        "user"
-      );
+      content = JSON.stringify(messageContent);
+      messageId = addMessage(chatId, content, "user");
     }
+
+    // Save message to database - don't await to keep UI responsive
+    saveMessage({
+      chatId,
+      content,
+      role: "user",
+    }).catch((err) => {
+      // Just log the error, don't block the UI
+      console.error("Failed to save message to database:", err);
+    });
+
     // Call the AI SDK's submit handler, passing attachments if present
     aiSdkHandleSubmit(e, { experimental_attachments: imageFiles || undefined });
     // Generate title asynchronously for first message
-    const chat = getChat(currentChatId);
+    const chat = getChat(chatId);
     if (chat && chat.messages.length === 1) {
       try {
-        const title = await generateChatTitle(input, messageId, currentChatId);
-        updateChatTitle(currentChatId, title);
+        const title = await generateChatTitle(input, messageId, chatId);
+        updateChatTitle(chatId, title);
       } catch (error) {
         console.error("Failed to generate chat title:", error);
       }
@@ -773,21 +833,21 @@ export function Chat() {
     aiSdkSetMessages(messagesToKeep);
 
     // If we have a chatId, update our local chat store to match AI SDK state
-    if (chatId) {
-      const chat = getChat(chatId);
+    if (currentChatId) {
+      const chat = getChat(currentChatId);
       if (chat) {
         // Get the messages from our store up to the retry point (excluding the last user message)
         const storeMsgsToKeep = chat.messages.slice(0, userMessageIndex);
 
         // Delete the current chat and create a new one with the same ID and filtered messages
-        deleteChat(chatId);
+        deleteChat(currentChatId);
 
         // Manually create a new chat with the same ID and only the kept messages
         useChatStore.setState((state) => ({
           chats: [
             ...state.chats,
             {
-              id: chatId,
+              id: currentChatId,
               title: chat.title,
               createdAt: chat.createdAt,
               updatedAt: new Date().toISOString(),
@@ -834,8 +894,8 @@ export function Chat() {
       aiSdkSetMessages(updatedMessages);
 
       // If we have a chatId, update our local chat store
-      if (chatId) {
-        const chat = getChat(chatId);
+      if (currentChatId) {
+        const chat = getChat(currentChatId);
         if (chat) {
           // Find the message in our store
           const storeMessageIndex = chat.messages.findIndex(
@@ -852,7 +912,7 @@ export function Chat() {
             // Update the chat in the store
             useChatStore.setState((state) => ({
               chats: state.chats.map((c) =>
-                c.id === chatId
+                c.id === currentChatId
                   ? {
                       ...c,
                       messages: updatedStoreMessages,
@@ -893,7 +953,7 @@ export function Chat() {
     const messagesUpToSelected = messages.slice(0, messageIndex + 1);
 
     // Create a new chat and mark it as a branch from the current chat
-    const newChatId = createChat(chatId);
+    const newChatId = createChat(currentChatId ?? undefined);
 
     // Set a temporary title
     const selectedMessage = messages[messageIndex];
@@ -972,8 +1032,8 @@ export function Chat() {
     const messagesToKeep = messages.slice(0, userMessageIndex + 1);
     aiSdkSetMessages(messagesToKeep);
     // Remove from store as well
-    if (chatId) {
-      const chat = getChat(chatId);
+    if (currentChatId) {
+      const chat = getChat(currentChatId);
       if (chat) {
         const storeMessagesToKeep = chat.messages.slice(
           0,
@@ -981,7 +1041,7 @@ export function Chat() {
         );
         useChatStore.setState((state) => ({
           chats: state.chats.map((c) =>
-            c.id === chatId
+            c.id === currentChatId
               ? {
                   ...c,
                   messages: storeMessagesToKeep,
@@ -1009,65 +1069,115 @@ export function Chat() {
     setImageFiles(files);
   };
 
-  const messageListProps = {
-    messages: messages.map((m: { id: string; role: string; content: any }) => {
-      let content:
-        | string
-        | Array<{ type: string; text?: string; image?: string }> = m.content;
-      if (
-        typeof content === "string" &&
-        content.startsWith("[") &&
-        content.includes("type")
-      ) {
-        try {
-          const arr = JSON.parse(content);
-          if (Array.isArray(arr) && arr.every((part: any) => part.type)) {
-            content = arr;
-          }
-        } catch {}
-      }
-      return {
-        id: m.id,
-        role: m.role as "user" | "assistant",
-        content:
-          m.role === "assistant" && useWebSearch && typeof content === "string"
-            ? cleanRawGeminiOutput(content)
-            : content,
-      };
-    }),
-    isLoading,
-    messageToSourcesMap,
-    messageToReasoningMap,
-    reasoningUpdateTimestamps,
-    sources,
-    useThinking,
-    selectedModel,
-    messageToModelMap,
-    onRetry: handleRetry,
-    onEdit: handleEdit,
-    onBranchOff: handleBranchOff,
-    onModelChange: handleModelChange,
-    editingMessageId,
-    editingContent,
-    setEditingContent,
-  };
+  // First, create a memoized transformed messages array
+  const transformedMessages = useMemo(
+    () =>
+      messages.map((m: { id: string; role: string; content: any }) => {
+        let content:
+          | string
+          | Array<{ type: string; text?: string; image?: string }> = m.content;
+        if (
+          typeof content === "string" &&
+          content.startsWith("[") &&
+          content.includes("type")
+        ) {
+          try {
+            const arr = JSON.parse(content);
+            if (Array.isArray(arr) && arr.every((part: any) => part.type)) {
+              content = arr;
+            }
+          } catch {}
+        }
+        return {
+          id: m.id,
+          role: m.role as "user" | "assistant",
+          content:
+            m.role === "assistant" &&
+            useWebSearch &&
+            typeof content === "string"
+              ? cleanRawGeminiOutput(content)
+              : content,
+        };
+      }),
+    [messages, useWebSearch, cleanRawGeminiOutput]
+  );
 
-  const chatInputProps = {
-    input,
-    handleInputChange,
-    handleSubmit,
-    isLoading,
-    error: error || null,
-    apiKey,
-    useWebSearch,
-    setUseWebSearch,
-    useThinking,
-    setUseThinking,
-    selectedModel,
-    setSelectedModel,
-    onImageChange: handleImageChange,
-    imageFiles,
-  };
+  // Then use the transformed messages in messageListProps
+  const messageListProps = useMemo(
+    () => ({
+      messages: transformedMessages,
+      isLoading,
+      messageToSourcesMap,
+      messageToReasoningMap,
+      reasoningUpdateTimestamps,
+      sources,
+      useThinking,
+      selectedModel,
+      messageToModelMap,
+      onRetry: handleRetry,
+      onEdit: handleEdit,
+      onBranchOff: handleBranchOff,
+      onModelChange: handleModelChange,
+      editingMessageId,
+      editingContent,
+      setEditingContent,
+    }),
+    [
+      transformedMessages,
+      isLoading,
+      messageToSourcesMap,
+      messageToReasoningMap,
+      reasoningUpdateTimestamps,
+      sources,
+      useThinking,
+      selectedModel,
+      messageToModelMap,
+      handleRetry,
+      handleEdit,
+      handleBranchOff,
+      handleModelChange,
+      editingMessageId,
+      editingContent,
+      setEditingContent,
+    ]
+  );
+
+  const chatInputProps = useMemo(
+    () => ({
+      input,
+      handleInputChange,
+      handleSubmit,
+      isLoading,
+      error: error || null,
+      apiKey,
+      useWebSearch,
+      setUseWebSearch,
+      useThinking,
+      setUseThinking,
+      selectedModel,
+      setSelectedModel,
+      onImageChange: handleImageChange,
+      imageFiles,
+      disabled: !canWrite,
+    }),
+    [
+      input,
+      handleInputChange,
+      handleSubmit,
+      isLoading,
+      error,
+      apiKey,
+      useWebSearch,
+      setUseWebSearch,
+      useThinking,
+      setUseThinking,
+      selectedModel,
+      setSelectedModel,
+      handleImageChange,
+      imageFiles,
+      canWrite,
+    ]
+  );
 
   // If not initialized, show loading state
   if (!isInitialized) {
@@ -1101,6 +1211,11 @@ export function Chat() {
             {/* Input at Bottom */}
             <div className="  flex-shrink-0 p-4 bg-card/70 backdrop-blur-lg max-w-4xl mx-auto w-full bottom-5 rounded-2xl mb-2  border ">
               <ChatInput {...chatInputProps} />
+              {!canWrite && (
+                <div className="text-center mt-2 text-sm text-amber-500">
+                  You don't have permission to send messages in this chat.
+                </div>
+              )}
             </div>
           </>
         ) : (
@@ -1115,6 +1230,11 @@ export function Chat() {
                 <ShineBorder shineColor={["#A07CFE", "#FE8FB5", "#FFBE7B"]} />
 
                 <ChatInput {...chatInputProps} />
+                {!canWrite && (
+                  <div className="text-center mt-2 text-sm text-amber-500">
+                    You don't have permission to send messages in this chat.
+                  </div>
+                )}
               </div>
             </div>
           </div>

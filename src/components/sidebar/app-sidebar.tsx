@@ -19,6 +19,7 @@ import {
   MessageSquareIcon,
   XIcon,
   TrashIcon,
+  Command,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -48,6 +49,8 @@ import {
   parseISO,
 } from "date-fns";
 import { useChatStore, Chat } from "@/frontend/stores/ChatStore";
+import { AuroraText } from "../ui/aurora-text";
+import { Badge } from "../ui/badge";
 
 type GroupedChats = {
   [key: string]: Chat[];
@@ -201,17 +204,21 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     return (
       <div key={chat.id} className="group">
         <SidebarMenuItem className="relative group/item">
-          <NavLink to={`/chat/${chat.id}`} className="w-full">
-            <SidebarMenuButton
-              className={`w-full justify-start pr-8 ${
-                searchQuery &&
-                chat.title.toLowerCase().includes(searchQuery.toLowerCase())
-                  ? "bg-accent/30"
-                  : ""
-              }`}
-            >
-              <span className="truncate">{chat.title}</span>
-            </SidebarMenuButton>
+          <NavLink to={`/chat/${chat.id}`}>
+            {({ isActive }) => (
+              <SidebarMenuButton
+                className={`w-full justify-start pr-8 ${
+                  isActive ? "bg-accent/50" : ""
+                } ${
+                  searchQuery &&
+                  chat.title.toLowerCase().includes(searchQuery.toLowerCase())
+                    ? "bg-accent/30"
+                    : ""
+                }`}
+              >
+                <span className="truncate">{chat.title}</span>
+              </SidebarMenuButton>
+            )}
           </NavLink>
           <Button
             variant="ghost"
@@ -232,19 +239,23 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 key={childChat.id}
                 className="relative group/item"
               >
-                <NavLink to={`/chat/${childChat.id}`} className="w-full">
-                  <SidebarMenuButton
-                    className={`w-full justify-start pr-8 text-sm ${
-                      searchQuery &&
-                      childChat.title
-                        .toLowerCase()
-                        .includes(searchQuery.toLowerCase())
-                        ? "bg-accent/30"
-                        : ""
-                    }`}
-                  >
-                    <span className="truncate">{childChat.title}</span>
-                  </SidebarMenuButton>
+                <NavLink to={`/chat/${childChat.id}`}>
+                  {({ isActive }) => (
+                    <SidebarMenuButton
+                      className={`w-full justify-start pr-8 text-sm ${
+                        isActive ? "bg-accent/50" : ""
+                      } ${
+                        searchQuery &&
+                        childChat.title
+                          .toLowerCase()
+                          .includes(searchQuery.toLowerCase())
+                          ? "bg-accent/30"
+                          : ""
+                      }`}
+                    >
+                      <span className="truncate">{childChat.title}</span>
+                    </SidebarMenuButton>
+                  )}
                 </NavLink>
                 <Button
                   variant="ghost"
@@ -277,18 +288,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   >
                     <div className="grid flex-1 text-center w-full text-sm leading-tight">
                       <span className="truncate font-semibold text-lg">
-                        {siteConfig.name}
+                        <AuroraText>{siteConfig.name}</AuroraText>
                       </span>
                     </div>
                   </a>
                 </div>
               </SidebarMenuButton>
-              <div className="border-b w-full mt-2" />
+              <div className="w-full mt-2" />
             </SidebarMenuItem>
             <div className="flex items-center gap-2">
               <Button
                 onClick={handleNewChat}
-                className="flex-1 flex items-center gap-2"
+                variant="outline"
+                className="flex-1  bg-card border flex items-center gap-2"
               >
                 <PlusIcon className="w-4 h-4" />
                 <span>New Chat</span>
@@ -304,16 +316,25 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               </Button>
             </div>
           </SidebarMenu>
-          <div className="border-b w-full mt-2">
+          <div className=" w-full mt-2 flex items-center justify-between relative bg-background rounded-md">
             <div className="relative flex items-center">
               <Input
-                placeholder="Search your threads..."
+                placeholder="Search"
                 className="pl-10 bg-transparent dark:bg-transparent border-none focus-visible:ring-0 focus-visible:ring-offset-0"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
               <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4 pointer-events-none" />
             </div>
+            <kbd className="text-xs text-muted-foreground flex items-center gap-1 absolute right-0 top-1/2 -translate-y-1/2">
+              <Badge
+                variant="outline"
+                className=" flex items-center gap-1 border-0 text-muted-foreground"
+              >
+                <Command className="w-4 h-4" />
+                <span className="text-xs mt-0.5">K</span>
+              </Badge>
+            </kbd>
           </div>
         </SidebarHeader>
         <SidebarContent>

@@ -126,7 +126,7 @@ function AppWithProviders() {
       <ChatSyncProvider>
         <AppRoutes />
       </ChatSyncProvider>
-      <Toaster className="bg-popover/50 backdrop-blur-md" />
+      <Toaster />
     </CommandProvider>
   );
 }

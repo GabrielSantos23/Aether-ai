@@ -7,11 +7,13 @@ import { v4 as uuidv4 } from "uuid";
 export type ChatDB = {
   id: string;
   userId: string;
+  creatorId: string;
   title: string;
   createdAt: Date;
   updatedAt: Date;
   parentId?: string;
   metadata?: Record<string, any>;
+  isPublic?: boolean;
   messages: MessageDB[];
 };
 
@@ -19,60 +21,113 @@ export type MessageDB = {
   id: string;
   chatId: string;
   userId: string;
+  content: string;
   role: "user" | "assistant";
-  content: any; // Can be string or multimodal content
-  webSearch: boolean;
-  thinking: boolean;
-  reasoning?: string;
-  sources?: any[];
   createdAt: Date;
   updatedAt: Date;
   model?: string;
-  imageAnalysis?: any;
+  webSearch?: boolean;
+  thinking?: boolean;
+  reasoning?: string;
+  sources?: any;
 };
 
 // Chat CRUD operations
 export async function getUserChats(userId: string): Promise<ChatDB[]> {
   try {
-    // Get all chats for the user
     const chats = await db.query.chat.findMany({
       where: eq(chat.userId, userId),
-      orderBy: (chat) => [chat.updatedAt],
+      orderBy: (fields, { desc }) => [desc(fields.updatedAt)],
     });
 
-    // Get all messages for these chats
-    const chatIds = chats.map((chat) => chat.id);
-    const messages = chatIds.length
-      ? await db.query.message.findMany({
-          where: inArray(message.chatId, chatIds),
-          orderBy: (message) => [message.createdAt],
-        })
-      : [];
+    const chatIds = chats.map((c) => c.id);
 
-    // Group messages by chatId
-    const messagesByChatId = messages.reduce((acc, msg) => {
-      if (!acc[msg.chatId]) {
-        acc[msg.chatId] = [];
-      }
-      acc[msg.chatId].push({
-        ...msg,
-        role: msg.role as "user" | "assistant",
-        reasoning: msg.reasoning === null ? undefined : msg.reasoning,
-        sources: Array.isArray(msg.sources) ? msg.sources : undefined,
-        model: msg.model === null ? undefined : msg.model,
-      });
-      return acc;
-    }, {} as Record<string, MessageDB[]>);
+    if (chatIds.length === 0) {
+      return [];
+    }
 
-    // Combine chats with their messages
-    return chats.map((chat) => ({
-      ...chat,
-      parentId: chat.parentId === null ? undefined : chat.parentId,
-      metadata: chat.metadata as Record<string, any> | undefined,
-      messages: messagesByChatId[chat.id] || [],
+    const messages = await db.query.message.findMany({
+      where: inArray(message.chatId, chatIds),
+      orderBy: (fields, { asc }) => [asc(fields.createdAt)],
+    });
+
+    // Convert DB types to our internal types
+    return chats.map((c) => ({
+      id: c.id,
+      userId: c.userId,
+      creatorId: c.creatorId || c.userId, // Fallback for older records
+      title: c.title,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+      parentId: c.parentId || undefined, // Convert null to undefined
+      metadata: c.metadata || undefined,
+      isPublic: c.isPublic || false,
+      messages: messages
+        .filter((m) => m.chatId === c.id)
+        .map((m) => ({
+          id: m.id,
+          chatId: m.chatId,
+          userId: m.userId,
+          content: String(m.content), // Ensure content is string
+          role: m.role as "user" | "assistant",
+          createdAt: m.createdAt,
+          updatedAt: m.updatedAt,
+          model: m.model || undefined,
+          webSearch: m.webSearch || false,
+          thinking: m.thinking || false,
+          reasoning: m.reasoning || undefined,
+          sources: m.sources || undefined,
+        })),
     }));
   } catch (error) {
     console.error("Failed to get user chats:", error);
+    throw error;
+  }
+}
+
+export async function getChat(chatId: string): Promise<ChatDB | null> {
+  try {
+    const chatResult = await db.query.chat.findFirst({
+      where: eq(chat.id, chatId),
+    });
+
+    if (!chatResult) {
+      return null;
+    }
+
+    const messages = await db.query.message.findMany({
+      where: eq(message.chatId, chatId),
+      orderBy: (fields, { asc }) => [asc(fields.createdAt)],
+    });
+
+    // Convert DB types to our internal types
+    return {
+      id: chatResult.id,
+      userId: chatResult.userId,
+      creatorId: chatResult.creatorId || chatResult.userId,
+      title: chatResult.title,
+      createdAt: chatResult.createdAt,
+      updatedAt: chatResult.updatedAt,
+      parentId: chatResult.parentId || undefined,
+      metadata: chatResult.metadata || undefined,
+      isPublic: chatResult.isPublic || false,
+      messages: messages.map((m) => ({
+        id: m.id,
+        chatId: m.chatId,
+        userId: m.userId,
+        content: String(m.content),
+        role: m.role as "user" | "assistant",
+        createdAt: m.createdAt,
+        updatedAt: m.updatedAt,
+        model: m.model || undefined,
+        webSearch: m.webSearch || false,
+        thinking: m.thinking || false,
+        reasoning: m.reasoning || undefined,
+        sources: m.sources || undefined,
+      })),
+    };
+  } catch (error) {
+    console.error(`Failed to get chat ${chatId}:`, error);
     throw error;
   }
 }
@@ -87,11 +142,13 @@ export async function createChat(
       .values({
         id: chatData.id || uuidv4(),
         userId: chatData.userId,
+        creatorId: chatData.creatorId || chatData.userId, // Default creator to user if not specified
         title: chatData.title,
         createdAt: now,
         updatedAt: now,
         parentId: chatData.parentId,
         metadata: chatData.metadata,
+        isPublic: chatData.isPublic || false,
       })
       .returning();
 
@@ -104,7 +161,7 @@ export async function createChat(
 
 export async function updateChat(
   chatId: string,
-  updates: Partial<Omit<ChatDB, "id" | "userId" | "messages" | "createdAt">>
+  updates: Partial<Omit<ChatDB, "id" | "messages">>
 ): Promise<void> {
   try {
     await db
@@ -122,9 +179,6 @@ export async function updateChat(
 
 export async function deleteChat(chatId: string): Promise<void> {
   try {
-    // Delete all messages first (cascade should handle this, but being explicit)
-    await db.delete(message).where(eq(message.chatId, chatId));
-    // Then delete the chat
     await db.delete(chat).where(eq(chat.id, chatId));
   } catch (error) {
     console.error(`Failed to delete chat ${chatId}:`, error);
@@ -153,7 +207,6 @@ export async function createMessage(
         createdAt: now,
         updatedAt: now,
         model: msg.model,
-        imageAnalysis: msg.imageAnalysis,
       })
       .returning();
 
@@ -194,91 +247,79 @@ export async function deleteMessage(messageId: string): Promise<void> {
 // Batch operations for efficiency
 export async function syncChatWithMessages(chatData: ChatDB): Promise<void> {
   try {
-    // Begin transaction
-    await db.transaction(async (tx) => {
-      // Check if chat exists
-      const existingChat = await tx.query.chat.findFirst({
-        where: eq(chat.id, chatData.id),
-      });
+    // First, ensure the chat exists
+    const existingChat = await db.query.chat.findFirst({
+      where: eq(chat.id, chatData.id),
+    });
 
-      if (existingChat) {
-        // Update existing chat
-        await tx
-          .update(chat)
-          .set({
-            title: chatData.title,
-            updatedAt: new Date(),
-            parentId: chatData.parentId,
-            metadata: chatData.metadata,
-          })
-          .where(eq(chat.id, chatData.id));
-      } else {
-        // Create new chat
-        await tx.insert(chat).values({
-          id: chatData.id,
-          userId: chatData.userId,
+    if (existingChat) {
+      // Update the existing chat
+      await db
+        .update(chat)
+        .set({
           title: chatData.title,
-          createdAt:
-            chatData.createdAt instanceof Date
-              ? chatData.createdAt
-              : new Date(chatData.createdAt),
-          updatedAt:
-            chatData.updatedAt instanceof Date
-              ? chatData.updatedAt
-              : new Date(chatData.updatedAt),
+          updatedAt: chatData.updatedAt || new Date(),
           parentId: chatData.parentId,
           metadata: chatData.metadata,
-        });
-      }
+          isPublic: chatData.isPublic,
+        })
+        .where(eq(chat.id, chatData.id));
+    } else {
+      // Create a new chat
+      await db.insert(chat).values({
+        id: chatData.id,
+        userId: chatData.userId,
+        creatorId: chatData.creatorId || chatData.userId,
+        title: chatData.title,
+        createdAt: chatData.createdAt || new Date(),
+        updatedAt: chatData.updatedAt || new Date(),
+        parentId: chatData.parentId,
+        metadata: chatData.metadata,
+        isPublic: chatData.isPublic || false,
+      });
+    }
 
-      // Handle messages
-      for (const msg of chatData.messages) {
-        const existingMessage = await tx.query.message.findFirst({
-          where: eq(message.id, msg.id),
-        });
+    // Get existing messages for this chat
+    const existingMessages = await db.query.message.findMany({
+      where: eq(message.chatId, chatData.id),
+    });
 
-        if (existingMessage) {
-          // Update existing message
-          await tx
-            .update(message)
-            .set({
-              content: msg.content,
-              role: msg.role,
-              webSearch: msg.webSearch || false,
-              thinking: msg.thinking || false,
-              reasoning: msg.reasoning,
-              sources: msg.sources,
-              model: msg.model,
-              imageAnalysis: msg.imageAnalysis,
-              updatedAt: new Date(),
-            })
-            .where(eq(message.id, msg.id));
-        } else {
-          // Create new message
-          await tx.insert(message).values({
-            id: msg.id,
-            chatId: chatData.id,
-            userId: chatData.userId,
+    const existingMessageIds = new Set(existingMessages.map((m) => m.id));
+
+    // Process each message
+    for (const msg of chatData.messages) {
+      if (existingMessageIds.has(msg.id)) {
+        // Update existing message
+        await db
+          .update(message)
+          .set({
             content: msg.content,
-            role: msg.role,
-            webSearch: msg.webSearch || false,
-            thinking: msg.thinking || false,
+            updatedAt: msg.updatedAt || new Date(),
+            model: msg.model,
+            webSearch: msg.webSearch,
+            thinking: msg.thinking,
             reasoning: msg.reasoning,
             sources: msg.sources,
-            createdAt:
-              msg.createdAt instanceof Date
-                ? msg.createdAt
-                : new Date(msg.createdAt),
-            updatedAt:
-              msg.updatedAt instanceof Date
-                ? msg.updatedAt
-                : new Date(msg.updatedAt),
-            model: msg.model,
-            imageAnalysis: msg.imageAnalysis,
-          });
-        }
+          })
+          .where(eq(message.id, msg.id));
+      } else {
+        // Insert new message
+        await db.insert(message).values({
+          id: msg.id,
+          chatId: chatData.id,
+          userId: msg.userId,
+          content: msg.content,
+          role: msg.role,
+          createdAt: msg.createdAt || new Date(),
+          updatedAt: msg.updatedAt || new Date(),
+          model: msg.model,
+          webSearch: msg.webSearch,
+          thinking: msg.thinking,
+          reasoning: msg.reasoning,
+          sources: msg.sources,
+        });
       }
-    });
+    }
   } catch (error) {
     console.error(`Failed to sync chat ${chatData.id}:`, error);
     throw error;

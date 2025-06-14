@@ -1,27 +1,37 @@
 import { Source } from "./chat/MessageList";
 
-export const getFaviconUrl = async (url: string): Promise<string | null> => {
+export const getFaviconUrl = async (
+  url: string,
+  title?: string
+): Promise<string | null> => {
   try {
-    // Check if it's a Google redirect URL
     if (
       url.includes("vertexaisearch.cloud.google.com/grounding-api-redirect/")
     ) {
-      // Try to resolve the redirect to get the actual URL
       const actualUrl = await resolveRedirectUrl(url);
       if (actualUrl) {
         const domain = new URL(actualUrl).hostname;
         return `https://www.google.com/s2/favicons?domain=${domain}&sz=512`;
       }
+      // If can't resolve, try title as domain
+      if (title && isLikelyDomain(title)) {
+        return `https://www.google.com/s2/favicons?domain=${title}&sz=512`;
+      }
+      // Fallback
+      return "https://www.google.com/s2/favicons?domain=google.com&sz=512";
     }
-
     const domain = new URL(url).hostname;
     return `https://www.google.com/s2/favicons?domain=${domain}&sz=512`;
   } catch {
-    return null;
+    // Try title as domain
+    if (title && isLikelyDomain(title)) {
+      return `https://www.google.com/s2/favicons?domain=${title}&sz=512`;
+    }
+    return "https://www.google.com/s2/favicons?domain=google.com&sz=512";
   }
 };
 
-// Function to resolve redirect URLs
+// Function to resolve redirect URLsS
 const resolveRedirectUrl = async (
   redirectUrl: string
 ): Promise<string | null> => {
@@ -83,8 +93,13 @@ export const getFaviconUrlWithFallbacks = (url: string): string => {
   }
 };
 
+function isLikelyDomain(str: string): boolean {
+  // Simple check: contains a dot and no spaces
+  return /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(str.trim());
+}
+
 export const getSourceDisplayInfo = async (source: Source) => {
-  const faviconUrl = await getFaviconUrl(source.url || "");
+  const faviconUrl = await getFaviconUrl(source.url || "", source.title);
   let displayTitle = source.title || source.url || "Unknown Source";
 
   // Truncate long titles
@@ -92,10 +107,8 @@ export const getSourceDisplayInfo = async (source: Source) => {
     displayTitle = displayTitle.substring(0, 57) + "...";
   }
 
-  // Extract domain for display
   let domain = "";
   try {
-    // Handle redirect URLs
     if (
       source.url?.includes(
         "vertexaisearch.cloud.google.com/grounding-api-redirect/"
@@ -103,10 +116,14 @@ export const getSourceDisplayInfo = async (source: Source) => {
     ) {
       domain = "AI-generated content";
     } else {
-      domain = new URL(source.url || "").hostname.replace("www.", "");
+      domain =
+        source.title ||
+        (source.url
+          ? new URL(source.url).hostname.replace("www.", "")
+          : "Unknown domain");
     }
   } catch {
-    domain = "Unknown domain";
+    domain = source.title || "Unknown domain";
   }
 
   return { faviconUrl, displayTitle, domain };
@@ -122,10 +139,9 @@ export const getSourceDisplayInfoSync = (source: Source) => {
     displayTitle = displayTitle.substring(0, 57) + "...";
   }
 
-  // Extract domain for display
+  // Use the title instead of the domain for display
   let domain = "";
   try {
-    // Handle redirect URLs
     if (
       source.url?.includes(
         "vertexaisearch.cloud.google.com/grounding-api-redirect/"
@@ -133,10 +149,14 @@ export const getSourceDisplayInfoSync = (source: Source) => {
     ) {
       domain = "AI-generated content";
     } else {
-      domain = new URL(source.url || "").hostname.replace("www.", "");
+      domain =
+        source.title ||
+        (source.url
+          ? new URL(source.url).hostname.replace("www.", "")
+          : "Unknown domain");
     }
   } catch {
-    domain = "Unknown domain";
+    domain = source.title || "Unknown domain";
   }
 
   return { faviconUrl, displayTitle, domain };

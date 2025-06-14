@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -35,7 +35,7 @@ interface MessageActionsProps {
   onModelChange?: (messageId: string, newModel: string) => void;
 }
 
-export function MessageActions({
+const MessageActionsComponent = ({
   role,
   content,
   messageId,
@@ -44,7 +44,7 @@ export function MessageActions({
   onEdit,
   onBranchOff,
   onModelChange,
-}: MessageActionsProps) {
+}: MessageActionsProps) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -179,4 +179,6 @@ export function MessageActions({
       )}
     </div>
   );
-}
+};
+
+export const MessageActions = React.memo(MessageActionsComponent);

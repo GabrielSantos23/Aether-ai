@@ -9,6 +9,8 @@ export type Chat = {
   updatedAt: string;
   messages: Message[];
   parentId?: string; // Parent chat ID for branched chats
+  isPublic?: boolean; // Whether the chat is publicly accessible
+  creatorId?: string; // ID of the user who created the chat
 };
 
 export type Message = {
@@ -24,6 +26,7 @@ interface ChatState {
   setActiveChat: (chatId: string | null) => void;
   createChat: (parentId?: string) => string;
   updateChatTitle: (chatId: string, title: string) => void;
+  updateChatVisibility: (chatId: string, isPublic: boolean) => void;
   addMessage: (
     chatId: string,
     content: string,
@@ -58,6 +61,7 @@ export const useChatStore = create<ChatState>()(
               updatedAt: now,
               messages: [],
               parentId,
+              isPublic: false,
             },
           ],
           activeChat: id,
@@ -73,6 +77,19 @@ export const useChatStore = create<ChatState>()(
               ? {
                   ...chat,
                   title,
+                  updatedAt: new Date().toISOString(),
+                }
+              : chat
+          ),
+        })),
+
+      updateChatVisibility: (chatId, isPublic) =>
+        set((state) => ({
+          chats: state.chats.map((chat) =>
+            chat.id === chatId
+              ? {
+                  ...chat,
+                  isPublic,
                   updatedAt: new Date().toISOString(),
                 }
               : chat
