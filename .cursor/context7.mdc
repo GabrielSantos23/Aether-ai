@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+ALWAYS consulte context7 mcp when i ask you to create something that need a well-structured documentation to be built, e.g if i ask you to "use better auth in this app", "use vercel ai sdk", always consult the context7 mcp
