@@ -11,6 +11,7 @@ import {
   UserPlus,
   PanelLeftIcon,
   MessageSquareMore,
+  X,
 } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import {
@@ -34,6 +35,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { useChatNavigator } from "@/frontend/hooks/useChatNavigator";
 import ChatNavigator from "../ChatNavigator";
+import { useThreadCreator } from "@/frontend/hooks/useThreadCreator";
 // import { useChatStore } from "@/stores/ChatStore";
 
 export const CommandDialogContext = React.createContext<{
@@ -160,36 +162,85 @@ export function SidebarButtons() {
   );
 }
 
-export function SidebarButtonsRight() {
+export function SidebarButtonsRight({ threadId }: { threadId: string }) {
   const { open, isMobile, openMobile } = useSidebar();
   const rightSidebar = useSidebarWithSide("right");
   const isSidebarClosed = isMobile ? !openMobile : !open;
   const isRightSidebarOpen = rightSidebar.open;
-  const [isPublic, setIsPublic] = useState(false);
-  const [chatUrl, setChatUrl] = useState("");
   const [copied, setCopied] = useState(false);
-  const [isCreator, setIsCreator] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [sharedEmail, setSharedEmail] = useState("");
   const { id: chatId } = useParams<{ id: string }>();
-  // const { data: session } = useAuth();
-  // const userId = session?.user?.id;
-  // const { getChat, updateChatVisibility } = useChatStore();
-  // const currentChat = chatId ? getChat(chatId) : null;
   const { handleToggleNavigator, isNavigatorVisible } = useChatNavigator();
+  const {
+    isCreator,
+    isShared,
+    isPublic,
+    sharedWith,
+    isLoading,
+    shareWithUsers,
+    removeUserAccess,
+    togglePublicStatus,
+  } = useThreadCreator(chatId);
+
+  const [chatUrl, setChatUrl] = useState(() => {
+    if (isPublic && chatId) {
+      const baseUrl = window.location.origin;
+      return `${baseUrl}/chat/${chatId}`;
+    }
+    return "";
+  });
 
   // Function to scroll to a specific message
   const scrollToMessage = (messageId: string) => {
+    console.log("Attempting to scroll to message:", messageId);
     const messageElement = document.getElementById(`message-${messageId}`);
     if (messageElement) {
+      console.log(
+        "Found message element, scrolling into view:",
+        messageElement
+      );
       messageElement.scrollIntoView({
         behavior: "smooth",
         block: "center",
       });
-      // Optionally highlight the message
-      messageElement.classList.add("highlight-message");
+      // Highlight the message to make it obvious which one was selected
+      const originalBorder = messageElement.style.border;
+      const originalBoxShadow = messageElement.style.boxShadow;
+
+      messageElement.style.border = "2px solid var(--primary)";
+      messageElement.style.boxShadow = "0 0 8px var(--primary)";
+
       setTimeout(() => {
-        messageElement.classList.remove("highlight-message");
+        messageElement.style.border = originalBorder;
+        messageElement.style.boxShadow = originalBoxShadow;
       }, 2000);
+    } else {
+      console.warn("Message element not found for ID:", `message-${messageId}`);
+      // Try to find the element by just the messageId as a fallback
+      const fallbackElement = document.getElementById(messageId);
+      if (fallbackElement) {
+        console.log(
+          "Found fallback element, scrolling into view:",
+          fallbackElement
+        );
+        fallbackElement.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+
+        const originalBorder = fallbackElement.style.border;
+        const originalBoxShadow = fallbackElement.style.boxShadow;
+
+        fallbackElement.style.border = "2px solid var(--primary)";
+        fallbackElement.style.boxShadow = "0 0 8px var(--primary)";
+
+        setTimeout(() => {
+          fallbackElement.style.border = originalBorder;
+          fallbackElement.style.boxShadow = originalBoxShadow;
+        }, 2000);
+      } else {
+        console.error("No message element found with either ID format");
+      }
     }
   };
 
@@ -201,75 +252,28 @@ export function SidebarButtonsRight() {
   };
 
   useEffect(() => {
-    setIsPublic(false);
-    setIsCreator(false);
-    setChatUrl("");
-
-    if (!chatId) return;
-
-    const fetchChatStatus = async () => {
-      try {
-        setIsLoading(true);
-        const response = await fetch(`/api/chats/${chatId}/public-status`);
-        if (response.ok) {
-          const data = await response.json();
-          setIsPublic(data.isPublic);
-          setIsCreator(data.isCreator);
-
-          if (data.isPublic) {
-            const baseUrl = window.location.origin;
-            setChatUrl(`${baseUrl}/chat/${chatId}`);
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching chat status:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchChatStatus();
-  }, [chatId]);
+    if (isPublic && chatId) {
+      const baseUrl = window.location.origin;
+      setChatUrl(`${baseUrl}/chat/${chatId}`);
+    } else {
+      setChatUrl("");
+    }
+  }, [isPublic, chatId]);
 
   const handleTogglePublic = async () => {
-    if (!chatId || !isCreator) return;
+    if (!isCreator || isLoading) return;
 
     try {
-      setIsLoading(true);
-      const newPublicState = !isPublic;
+      await togglePublicStatus();
 
-      const response = await fetch(`/api/chats/${chatId}/toggle-public`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ isPublic: newPublicState }),
-      });
-
-      if (response.ok) {
-        // Update local state
-        setIsPublic(newPublicState);
-
-        // Update chat store
-        // updateChatVisibility(chatId, newPublicState);
-
-        if (newPublicState) {
-          const baseUrl = window.location.origin;
-          setChatUrl(`${baseUrl}/chat/${chatId}`);
-          toast.success("Chat is now public and can be shared");
-        } else {
-          setChatUrl("");
-          toast.success("Chat is now private");
-        }
+      if (!isPublic) {
+        toast.success("Chat is now public and can be shared");
       } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to update chat visibility");
+        toast.success("Chat is now private");
       }
     } catch (error) {
       console.error("Error toggling chat visibility:", error);
       toast.error("Failed to update chat visibility");
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -299,6 +303,35 @@ export function SidebarButtonsRight() {
           toast.error("Failed to copy link");
         }
       });
+  };
+
+  const handleShareWithUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!sharedEmail || !sharedEmail.trim() || !isCreator || isLoading) {
+      return;
+    }
+
+    try {
+      await shareWithUsers([sharedEmail.trim()]);
+      toast.success(`Chat shared with ${sharedEmail}`);
+      setSharedEmail("");
+    } catch (error) {
+      console.error("Error sharing chat:", error);
+      toast.error("Failed to share chat");
+    }
+  };
+
+  const handleRemoveAccess = async (email: string) => {
+    if (!isCreator || isLoading) return;
+
+    try {
+      await removeUserAccess(email);
+      toast.success(`Access removed for ${email}`);
+    } catch (error) {
+      console.error("Error removing access:", error);
+      toast.error("Failed to remove access");
+    }
   };
 
   const buttonVariants = {
@@ -382,7 +415,9 @@ export function SidebarButtonsRight() {
             <PopoverTrigger>
               <Button variant="ghost" className="bg-card" disabled={isLoading}>
                 {isPublic ? (
-                  <LockOpen className="h-4 w-4" />
+                  <Globe className="h-4 w-4 text-green-400" />
+                ) : isShared ? (
+                  <Share2 className="h-4 w-4 text-blue-400" />
                 ) : (
                   <Lock className="h-4 w-4" />
                 )}
@@ -396,39 +431,42 @@ export function SidebarButtonsRight() {
                   <p className="text-sm text-muted-foreground">
                     {isPublic
                       ? "Anyone with the link can view this chat."
+                      : isShared
+                      ? "This chat is shared with specific users."
                       : "This chat is private."}
                   </p>
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  <div className="grid flex-1 gap-2">
-                    <Label htmlFor="link" className="sr-only">
-                      Link
-                    </Label>
-                    <Input
-                      id="link"
-                      value={chatUrl}
-                      readOnly
-                      className="h-9 bg-card border"
-                      disabled={!isPublic}
-                    />
+                {/* Public Link Section */}
+                {isPublic && (
+                  <div className="flex items-center space-x-2">
+                    <div className="grid flex-1 gap-2">
+                      <Label htmlFor="link" className="sr-only">
+                        Link
+                      </Label>
+                      <Input
+                        id="link"
+                        value={chatUrl}
+                        readOnly
+                        className="h-9 bg-card border"
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      variant="outline"
+                      className="px-3 bg-background border hover:bg-background"
+                      onClick={handleCopy}
+                    >
+                      <span className="sr-only">Copy</span>
+                      {copied ? (
+                        <Check className="h-4 w-4" />
+                      ) : (
+                        <Copy className="h-4 w-4" />
+                      )}
+                    </Button>
                   </div>
-                  <Button
-                    type="submit"
-                    size="sm"
-                    variant="outline"
-                    className="px-3 bg-background border hover:bg-background"
-                    onClick={handleCopy}
-                    disabled={!isPublic}
-                  >
-                    <span className="sr-only">Copy</span>
-                    {copied ? (
-                      <Check className="h-4 w-4" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
+                )}
 
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
@@ -436,6 +474,7 @@ export function SidebarButtonsRight() {
                   </div>
                 </div>
 
+                {/* Public Access Toggle */}
                 <div className="grid gap-2 pt-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
@@ -465,6 +504,71 @@ export function SidebarButtonsRight() {
                   </p>
                 </div>
 
+                {/* Share with specific users section */}
+                {isCreator && (
+                  <>
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t border-border" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="share-email">Share with users</Label>
+                      <form
+                        onSubmit={handleShareWithUser}
+                        className="flex gap-2"
+                      >
+                        <Input
+                          id="share-email"
+                          value={sharedEmail}
+                          onChange={(e) => setSharedEmail(e.target.value)}
+                          placeholder="Enter email"
+                          className="h-9 bg-card border flex-1"
+                          type="email"
+                        />
+                        <Button
+                          type="submit"
+                          size="sm"
+                          variant="outline"
+                          className="px-3 bg-background border hover:bg-background"
+                          disabled={isLoading || !sharedEmail.trim()}
+                        >
+                          <UserPlus className="h-4 w-4" />
+                        </Button>
+                      </form>
+
+                      {/* List of users with access */}
+                      {sharedWith.length > 0 && (
+                        <div className="mt-4">
+                          <Label className="text-sm">Shared with</Label>
+                          <ul className="mt-2 space-y-2">
+                            {sharedWith.map((email) => (
+                              <li
+                                key={email}
+                                className="flex justify-between items-center text-sm"
+                              >
+                                <span className="truncate max-w-[280px]">
+                                  {email}
+                                </span>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-1"
+                                  onClick={() => handleRemoveAccess(email)}
+                                  disabled={isLoading}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
                 {!isCreator && (
                   <div className="pt-2">
                     <p className="text-sm text-amber-500">
@@ -480,7 +584,7 @@ export function SidebarButtonsRight() {
       </LayoutGroup>
 
       <ChatNavigator
-        threadId={chatId || ""}
+        threadId={threadId}
         scrollToMessage={scrollToMessage}
         isVisible={isNavigatorVisible}
         onClose={closeNavigator}

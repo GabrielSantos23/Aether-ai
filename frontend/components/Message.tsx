@@ -19,8 +19,6 @@ interface SearchSource {
 
 // Component to display search sources
 const SearchSources = ({ sources }: { sources: SearchSource[] }) => {
-  console.log("Rendering SearchSources component with sources:", sources);
-
   if (!sources || sources.length === 0) return null;
 
   return (
@@ -74,7 +72,6 @@ function PureMessage({
 
   useEffect(() => {
     if (message.role === "assistant" && searchSources.length > 0) {
-      console.log("Message component received searchSources:", searchSources);
     }
   }, [message.role, searchSources]);
 
@@ -106,14 +103,9 @@ function PureMessage({
 
   if (customReasoning) {
     reasoningContent = customReasoning;
-    console.log("Found custom reasoning on message object:", reasoningContent);
   } else if (message.role === "assistant" && (message as any).reasoning) {
     // Try to access reasoning directly from the message object
     reasoningContent = (message as any).reasoning;
-    console.log(
-      "Found reasoning directly on message object:",
-      reasoningContent
-    );
   } else if (
     typeof message.content === "string" &&
     (message.content.includes("Thinking Process") ||
@@ -121,7 +113,6 @@ function PureMessage({
       message.content.includes("step-by-step"))
   ) {
     reasoningContent = message.content;
-    console.log("Found reasoning in message.content:", reasoningContent);
   } else {
     for (const part of message.parts) {
       if (part.type === "text" && typeof part.text === "string") {
@@ -131,7 +122,6 @@ function PureMessage({
           part.text.includes("step-by-step")
         ) {
           reasoningContent = part.text;
-          console.log("Found reasoning in message part:", reasoningContent);
           break;
         }
       }
@@ -140,19 +130,8 @@ function PureMessage({
 
   // Debug output for reasoning
   if (message.role === "assistant") {
-    console.log(`Message ${message.id} - Full message object:`, message);
-    console.log(`Message ${message.id} - Reasoning content:`, reasoningContent);
-    console.log(
-      `Message ${message.id} - Will show reasoning:`,
-      !!reasoningContent
-    );
-
     // Also check custom reasoning property on message
     if ((message as any)._reasoning) {
-      console.log(
-        `Message ${message.id} - Has custom reasoning property:`,
-        (message as any)._reasoning
-      );
       if (!reasoningContent) {
         reasoningContent = (message as any)._reasoning;
       }
@@ -160,10 +139,6 @@ function PureMessage({
 
     // Check for reasoning property
     if ((message as any).reasoning) {
-      console.log(
-        `Message ${message.id} - Has direct reasoning property:`,
-        (message as any).reasoning
-      );
       if (!reasoningContent) {
         reasoningContent = (message as any).reasoning;
       }
@@ -269,6 +244,7 @@ function PureMessage({
           return message.role === "user" ? (
             <div
               key={key}
+              id={`message-${message.id}`}
               className="relative group px-4 py-3 rounded-xl bg-secondary border border-secondary-foreground/2 max-w-[80%]"
               ref={(el) => registerRef(message.id, el)}
             >
@@ -306,7 +282,12 @@ function PureMessage({
               )}
             </div>
           ) : (
-            <div key={key} className="group flex flex-col gap-2 w-full">
+            <div
+              key={key}
+              id={`message-${message.id}`}
+              className="group flex flex-col gap-2 w-full"
+              ref={(el) => registerRef(message.id, el)}
+            >
               <div className="markdown-content">
                 <MarkdownRenderer content={part.text} id={message.id} />
               </div>

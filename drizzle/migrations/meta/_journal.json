@@ -29,6 +29,13 @@
       "when": 1750018313332,
       "tag": "0003_add_sources_reasoning_to_messages",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1750122032706,
+      "tag": "0004_reflective_madame_masque",
+      "breakpoints": true
     }
   ]
 }

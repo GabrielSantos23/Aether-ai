@@ -10,18 +10,8 @@ export function useDataService() {
 
   // Set authentication status in the data service client whenever it changes
   useEffect(() => {
-    console.log("Auth state changed:", {
-      isLoggedIn,
-      userId: user?.id,
-      isAuthLoading,
-    });
-
     if (!isAuthLoading) {
       dataServiceClient.setAuthStatus(isLoggedIn, user?.id || null);
-      console.log("Updated dataServiceClient auth status:", {
-        isLoggedIn,
-        userId: user?.id,
-      });
     }
   }, [isLoggedIn, user, isAuthLoading]);
 
@@ -33,10 +23,6 @@ export function useDataService() {
       setIsLoading(true);
       await refetch();
       dataServiceClient.setAuthStatus(isLoggedIn, user?.id || null);
-      console.log("Manually refreshed auth status:", {
-        isLoggedIn,
-        userId: user?.id,
-      });
     } catch (error) {
       console.error("Error refreshing auth status:", error);
     } finally {

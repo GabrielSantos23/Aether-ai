@@ -3,11 +3,15 @@
 import { Dispatch, SetStateAction, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { cn } from "@/lib/utils";
-import { Check, Copy, RefreshCcw, SquarePen } from "lucide-react";
+import { Check, Copy, RefreshCcw, SquarePen, GitBranch } from "lucide-react";
 import { UIMessage } from "ai";
 import { UseChatHelpers } from "@ai-sdk/react";
 import { useAPIKeyStore } from "@/frontend/stores/APIKeyStore";
 import { useDataService } from "@/frontend/hooks/useDataService";
+import { useNavigate } from "react-router";
+import { toast } from "sonner";
+import { v4 as uuidv4 } from "uuid";
+import { DBMessage } from "@/frontend/dexie/db";
 
 interface MessageControlsProps {
   threadId: string;
@@ -29,8 +33,11 @@ export default function MessageControls({
   stop,
 }: MessageControlsProps) {
   const [copied, setCopied] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isBranching, setIsBranching] = useState(false);
   const hasRequiredKeys = useAPIKeyStore((state) => state.hasRequiredKeys());
   const { dataService } = useDataService();
+  const navigate = useNavigate();
 
   const handleCopy = () => {
     navigator.clipboard.writeText(content);
@@ -41,45 +48,155 @@ export default function MessageControls({
   };
 
   const handleRegenerate = async () => {
-    // stop the current request
-    stop();
+    if (isRegenerating) return;
 
-    if (message.role === "user") {
-      await dataService.deleteTrailingMessages(
-        threadId,
-        message.createdAt as Date,
-        false
-      );
+    try {
+      setIsRegenerating(true);
 
-      setMessages((messages) => {
-        const index = messages.findIndex((m) => m.id === message.id);
+      // stop the current request
+      stop();
 
-        if (index !== -1) {
-          return [...messages.slice(0, index + 1)];
-        }
+      // Ensure we have a valid createdAt value
+      let messageCreatedAt = message.createdAt;
 
-        return messages;
-      });
-    } else {
-      await dataService.deleteTrailingMessages(
-        threadId,
-        message.createdAt as Date
-      );
+      // If createdAt is not available or invalid, use current time
+      if (!messageCreatedAt) {
+        console.warn("Message has no createdAt timestamp, using current time");
+        messageCreatedAt = new Date();
+      }
 
-      setMessages((messages) => {
-        const index = messages.findIndex((m) => m.id === message.id);
+      if (message.role === "user") {
+        await dataService.deleteTrailingMessages(
+          threadId,
+          messageCreatedAt,
+          false
+        );
 
-        if (index !== -1) {
-          return [...messages.slice(0, index)];
-        }
+        setMessages((messages) => {
+          const index = messages.findIndex((m) => m.id === message.id);
 
-        return messages;
-      });
+          if (index !== -1) {
+            return [...messages.slice(0, index + 1)];
+          }
+
+          return messages;
+        });
+      } else {
+        await dataService.deleteTrailingMessages(threadId, messageCreatedAt);
+
+        setMessages((messages) => {
+          const index = messages.findIndex((m) => m.id === message.id);
+
+          if (index !== -1) {
+            return [...messages.slice(0, index)];
+          }
+
+          return messages;
+        });
+      }
+
+      // Add a small delay to ensure state updates are processed
+      setTimeout(() => {
+        reload();
+        setIsRegenerating(false);
+      }, 100);
+    } catch (error) {
+      console.error("Error during regeneration:", error);
+      setIsRegenerating(false);
     }
+  };
 
-    setTimeout(() => {
-      reload();
-    }, 0);
+  const handleBranch = async () => {
+    if (isBranching) return;
+
+    try {
+      setIsBranching(true);
+      console.log(
+        "Branching from message:",
+        message.id,
+        "Content:",
+        message.content.substring(0, 50)
+      );
+
+      // Get all messages up to and including the current message
+      const allMessages = await dataService.getMessagesByThreadId(threadId);
+      console.log("All messages in thread:", allMessages.length);
+      console.log(
+        "Sample message IDs:",
+        allMessages.slice(0, 3).map((m: DBMessage) => m.id)
+      );
+
+      // Try different methods to find the message
+      let messageIndex = allMessages.findIndex(
+        (m: DBMessage) => m.id === message.id
+      );
+
+      // If not found by ID, try matching by content
+      if (messageIndex === -1 && message.content) {
+        console.log("Message not found by ID, trying to match by content");
+        messageIndex = allMessages.findIndex(
+          (m: DBMessage) =>
+            m.role === message.role &&
+            m.content &&
+            message.content &&
+            m.content.substring(0, 40) === message.content.substring(0, 40)
+        );
+      }
+
+      if (messageIndex === -1) {
+        console.error("Could not find message in thread");
+        toast.error("Could not create branch");
+        setIsBranching(false);
+        return;
+      }
+
+      console.log("Found message at index:", messageIndex);
+
+      // Get messages up to this point
+      const messagesForBranch = allMessages.slice(0, messageIndex + 1);
+
+      // Create a new thread as a branch
+      const parentThread = await dataService.getThread(threadId);
+      const branchTitle = parentThread
+        ? `${parentThread.title} (branch)`
+        : "New Branch";
+
+      // Generate a new ID for the branch thread
+      const newThreadId = uuidv4();
+
+      const newThread = await dataService.createThread({
+        id: newThreadId,
+        title: branchTitle,
+        parentThreadId: threadId,
+        branchedFromMessageId: message.id,
+      });
+
+      if (!newThread) {
+        throw new Error("Failed to create new thread");
+      }
+
+      // Copy messages to the new thread
+      for (const msg of messagesForBranch) {
+        await dataService.createMessage(newThread.id, {
+          id: msg.id,
+          content: msg.content,
+          role: msg.role,
+          createdAt: msg.createdAt,
+          parts: msg.parts || [],
+          sources: msg.sources,
+          reasoning: msg.reasoning,
+        });
+      }
+
+      // Navigate to the new thread
+      toast.success("Created new branch");
+      navigate(`/chat/${newThread.id}`);
+    } catch (error) {
+      console.error("Error creating branch:", error);
+      toast.error("Failed to create branch");
+    } finally {
+      setIsBranching(false);
+    }
   };
 
   return (
@@ -100,9 +217,29 @@ export default function MessageControls({
         </Button>
       )}
       {hasRequiredKeys && (
-        <Button variant="ghost" size="icon" onClick={handleRegenerate}>
-          <RefreshCcw className="w-4 h-4" />
-        </Button>
+        <>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleRegenerate}
+            disabled={isRegenerating}
+          >
+            <RefreshCcw
+              className={cn("w-4 h-4", { "animate-spin": isRegenerating })}
+            />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleBranch}
+            disabled={isBranching}
+            title="Create a new branch from this point"
+          >
+            <GitBranch
+              className={cn("w-4 h-4", { "animate-spin": isBranching })}
+            />
+          </Button>
+        </>
       )}
     </div>
   );

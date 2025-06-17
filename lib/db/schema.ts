@@ -5,6 +5,7 @@ import {
   timestamp,
   uuid,
   varchar,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { authUsers } from "drizzle-orm/supabase";
 import { relations } from "drizzle-orm";
@@ -17,6 +18,17 @@ export const threads = pgTable("threads", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   lastMessageAt: timestamp("last_message_at").notNull().defaultNow(),
+  isPublic: boolean("is_public").default(false),
+});
+
+// Shared threads table schema for specific user access
+export const sharedThreads = pgTable("shared_threads", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  threadId: uuid("thread_id").references(() => threads.id, {
+    onDelete: "cascade",
+  }),
+  userId: text("user_id").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 // Message table schema
@@ -72,6 +84,14 @@ export const messageReasonings = pgTable("message_reasonings", {
 export const threadsRelations = relations(threads, ({ many }) => ({
   messages: many(messages),
   messageSummaries: many(messageSummaries),
+  sharedWith: many(sharedThreads),
+}));
+
+export const sharedThreadsRelations = relations(sharedThreads, ({ one }) => ({
+  thread: one(threads, {
+    fields: [sharedThreads.threadId],
+    references: [threads.id],
+  }),
 }));
 
 export const messagesRelations = relations(messages, ({ one, many }) => ({

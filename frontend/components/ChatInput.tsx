@@ -42,6 +42,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useThreadCreator } from "@/frontend/hooks/useThreadCreator";
 
 interface ChatInputProps {
   threadId: string;
@@ -141,6 +142,7 @@ function PureChatInput({
   const [showImagePreview, setShowImagePreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { dataService } = useDataService();
+  const { isCreator, isLoading: creatorLoading } = useThreadCreator(threadId);
 
   const { textareaRef, adjustHeight } = useAutoResizeTextarea({
     minHeight: 72,
@@ -154,8 +156,9 @@ function PureChatInput({
     () =>
       (!input.trim() && !imageUrl) ||
       status === "streaming" ||
-      status === "submitted",
-    [input, imageUrl, status]
+      status === "submitted" ||
+      (!!id && !creatorLoading && !isCreator),
+    [input, imageUrl, status, id, creatorLoading, isCreator]
   );
 
   const { complete } = useMessageSummary();
@@ -166,7 +169,8 @@ function PureChatInput({
     if (
       (!currentInput.trim() && !imageUrl) ||
       status === "streaming" ||
-      status === "submitted"
+      status === "submitted" ||
+      (!!id && !isCreator)
     )
       return;
 
@@ -207,6 +211,7 @@ function PureChatInput({
     threadId,
     complete,
     dataService,
+    isCreator,
   ]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -294,6 +299,18 @@ function PureChatInput({
 
   if (!canChat) {
     return <KeyPrompt />;
+  }
+
+  if (id && !creatorLoading && !isCreator) {
+    return (
+      <div className="fixed w-full max-w-3xl bottom-0">
+        <div className="bg-card relative rounded-lg p-4 w-full text-center mb-2">
+          <p className="text-muted-foreground">
+            You are viewing a shared chat. Only the creator can send messages.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

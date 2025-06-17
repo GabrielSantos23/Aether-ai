@@ -96,16 +96,90 @@ export class DataServiceClient {
     }
   }
 
+  // Get a thread by ID
+  async getThread(id: string) {
+    try {
+      // Check auth status before proceeding
+      const { isAuthenticated } = await this.checkAuthStatus();
+
+      if (isAuthenticated) {
+        // Use server-side API for authenticated users
+        const response = await fetch(`/api/threads/${id}`);
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch thread from server");
+        }
+
+        const thread = await response.json();
+        return thread;
+      } else {
+        // Use IndexedDB via Dexie for local storage
+        const { db } = await import("../frontend/dexie/db");
+        return await db.threads.get(id);
+      }
+    } catch (error) {
+      console.error("Error getting thread:", error);
+      // Fallback to local storage if server request fails
+      try {
+        const { db } = await import("../frontend/dexie/db");
+        return await db.threads.get(id);
+      } catch (fallbackError) {
+        console.error("Fallback error:", fallbackError);
+        return null;
+      }
+    }
+  }
+
   // Create a new thread
-  async createThread(id: string, title: string = "New Chat") {
+  async createThread(
+    threadData:
+      | string
+      | {
+          id?: string;
+          title?: string;
+          parentThreadId?: string;
+          branchedFromMessageId?: string;
+        }
+  ) {
+    // Handle the old string argument pattern for backward compatibility
+    let id: string;
+    let title: string = "New Chat";
+    let parentThreadId: string | undefined;
+    let branchedFromMessageId: string | undefined;
+
+    if (typeof threadData === "string") {
+      id = threadData;
+    } else {
+      id = threadData.id || uuidv4();
+      title = threadData.title || "New Chat";
+      parentThreadId = threadData.parentThreadId;
+      branchedFromMessageId = threadData.branchedFromMessageId;
+    }
+
     console.log("DataServiceClient.createThread called:", {
       id,
       title,
+      parentThreadId,
+      branchedFromMessageId,
       isAuthenticated: this._isAuthenticated,
     });
 
     // Check auth status before proceeding
     const { isAuthenticated, userId } = await this.checkAuthStatus();
+
+    // Import the threadEvents here to avoid circular dependencies
+    const { threadEvents, THREAD_CREATED } = await import(
+      "../frontend/lib/events"
+    );
+    const newThread = {
+      id,
+      title,
+      parentThreadId,
+      branchedFromMessageId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lastMessageAt: new Date(),
+    };
 
     try {
       if (isAuthenticated && userId) {
@@ -119,7 +193,9 @@ export class DataServiceClient {
           body: JSON.stringify({
             id,
             title,
-            userId: userId,
+            userId,
+            parentThreadId,
+            branchedFromMessageId,
           }),
         });
 
@@ -129,39 +205,42 @@ export class DataServiceClient {
         }
 
         console.log("Thread created on server successfully");
+        // Emit thread created event
+        threadEvents.emit(THREAD_CREATED, newThread);
       } else {
         // Use IndexedDB via Dexie for local storage
         console.log("Creating thread locally");
         const { db } = await import("../frontend/dexie/db");
-        await db.threads.add({
-          id,
-          title,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          lastMessageAt: new Date(),
-        });
+        await db.threads.add(newThread);
         console.log("Thread created locally");
+        // Emit thread created event
+        threadEvents.emit(THREAD_CREATED, newThread);
       }
+
+      return newThread;
     } catch (error) {
       console.error("Error creating thread:", error);
       // Fallback to local storage if server request fails
       try {
         const { db } = await import("../frontend/dexie/db");
-        await db.threads.add({
-          id,
-          title,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          lastMessageAt: new Date(),
-        });
+        await db.threads.add(newThread);
+        // Even in fallback case, emit the event
+        threadEvents.emit(THREAD_CREATED, newThread);
+        return newThread;
       } catch (fallbackError) {
         console.error("Fallback error:", fallbackError);
+        return newThread;
       }
     }
   }
 
   // Update thread title
   async updateThread(id: string, title?: string) {
+    // Import the threadEvents here to avoid circular dependencies
+    const { threadEvents, THREAD_UPDATED } = await import(
+      "../frontend/lib/events"
+    );
+
     try {
       // Check auth status before proceeding
       const { isAuthenticated } = await this.checkAuthStatus();
@@ -179,6 +258,9 @@ export class DataServiceClient {
         if (!response.ok) {
           throw new Error("Failed to update thread on server");
         }
+
+        // Emit thread updated event
+        threadEvents.emit(THREAD_UPDATED, { id, title });
       } else {
         // Use IndexedDB via Dexie for local storage
         const { db } = await import("../frontend/dexie/db");
@@ -186,6 +268,9 @@ export class DataServiceClient {
           ...(title && { title }),
           updatedAt: new Date(),
         });
+
+        // Emit thread updated event
+        threadEvents.emit(THREAD_UPDATED, { id, title });
       }
     } catch (error) {
       console.error("Error updating thread:", error);
@@ -196,6 +281,9 @@ export class DataServiceClient {
           ...(title && { title }),
           updatedAt: new Date(),
         });
+
+        // Emit thread updated event even in fallback case
+        threadEvents.emit(THREAD_UPDATED, { id, title });
       } catch (fallbackError) {
         console.error("Fallback error:", fallbackError);
       }
@@ -204,6 +292,11 @@ export class DataServiceClient {
 
   // Delete a thread
   async deleteThread(id: string) {
+    // Import the threadEvents here to avoid circular dependencies
+    const { threadEvents, THREAD_DELETED } = await import(
+      "../frontend/lib/events"
+    );
+
     try {
       // Check auth status before proceeding
       const { isAuthenticated } = await this.checkAuthStatus();
@@ -217,6 +310,9 @@ export class DataServiceClient {
         if (!response.ok) {
           throw new Error("Failed to delete thread on server");
         }
+
+        // Emit thread deleted event
+        threadEvents.emit(THREAD_DELETED, id);
       } else {
         // Use IndexedDB via Dexie for local storage
         const { db } = await import("../frontend/dexie/db");
@@ -229,6 +325,9 @@ export class DataServiceClient {
             await db.threads.delete(id);
           }
         );
+
+        // Emit thread deleted event
+        threadEvents.emit(THREAD_DELETED, id);
       }
     } catch (error) {
       console.error("Error deleting thread:", error);
@@ -244,6 +343,9 @@ export class DataServiceClient {
             await db.threads.delete(id);
           }
         );
+
+        // Emit thread deleted event even in fallback case
+        threadEvents.emit(THREAD_DELETED, id);
       } catch (fallbackError) {
         console.error("Fallback error:", fallbackError);
       }
@@ -252,6 +354,11 @@ export class DataServiceClient {
 
   // Delete all threads
   async deleteAllThreads() {
+    // Import the threadEvents here to avoid circular dependencies
+    const { threadEvents, THREAD_DELETED } = await import(
+      "../frontend/lib/events"
+    );
+
     try {
       // Check auth status before proceeding
       const { isAuthenticated, userId } = await this.checkAuthStatus();
@@ -265,6 +372,9 @@ export class DataServiceClient {
         if (!response.ok) {
           throw new Error("Failed to delete all threads on server");
         }
+
+        // Emit a special event to indicate all threads were deleted
+        threadEvents.emit(THREAD_DELETED, "all");
       } else {
         // Use IndexedDB via Dexie for local storage
         const { db } = await import("../frontend/dexie/db");
@@ -277,6 +387,9 @@ export class DataServiceClient {
             await db.messageSummaries.clear();
           }
         );
+
+        // Emit a special event to indicate all threads were deleted
+        threadEvents.emit(THREAD_DELETED, "all");
       }
     } catch (error) {
       console.error("Error deleting all threads:", error);
@@ -292,6 +405,9 @@ export class DataServiceClient {
             await db.messageSummaries.clear();
           }
         );
+
+        // Emit a special event to indicate all threads were deleted
+        threadEvents.emit(THREAD_DELETED, "all");
       } catch (fallbackError) {
         console.error("Fallback error:", fallbackError);
       }
@@ -546,7 +662,7 @@ export class DataServiceClient {
   // Delete trailing messages
   async deleteTrailingMessages(
     threadId: string,
-    createdAt: Date,
+    createdAt: Date | string,
     gte: boolean = true
   ) {
     try {
@@ -554,6 +670,19 @@ export class DataServiceClient {
       const { isAuthenticated } = await this.checkAuthStatus();
 
       if (isAuthenticated) {
+        // Ensure createdAt is a valid Date object
+        let createdAtDate: Date;
+
+        if (typeof createdAt === "string") {
+          createdAtDate = new Date(createdAt);
+        } else if (createdAt instanceof Date) {
+          createdAtDate = createdAt;
+        } else {
+          // Fallback to current date if invalid
+          console.error("Invalid createdAt value:", createdAt);
+          createdAtDate = new Date();
+        }
+
         // Use server-side API for authenticated users
         const response = await fetch(`/api/threads/${threadId}/messages`, {
           method: "DELETE",
@@ -561,7 +690,7 @@ export class DataServiceClient {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            createdAt: createdAt.toISOString(),
+            createdAt: createdAtDate.toISOString(),
             gte,
           }),
         });
@@ -572,9 +701,23 @@ export class DataServiceClient {
       } else {
         // Use IndexedDB via Dexie for local storage
         const { db } = await import("../frontend/dexie/db");
+
+        // Ensure createdAt is a valid Date object for local storage
+        let createdAtDate: Date;
+
+        if (typeof createdAt === "string") {
+          createdAtDate = new Date(createdAt);
+        } else if (createdAt instanceof Date) {
+          createdAtDate = createdAt;
+        } else {
+          // Fallback to current date if invalid
+          console.error("Invalid createdAt value:", createdAt);
+          createdAtDate = new Date();
+        }
+
         const startKey = gte
-          ? [threadId, createdAt]
-          : [threadId, new Date(createdAt.getTime() + 1)];
+          ? [threadId, createdAtDate]
+          : [threadId, new Date(createdAtDate.getTime() + 1)];
         const endKey = [threadId, new Date()];
 
         await db.transaction(
@@ -607,9 +750,23 @@ export class DataServiceClient {
       // Fallback to local storage if server request fails
       try {
         const { db } = await import("../frontend/dexie/db");
+
+        // Ensure createdAt is a valid Date object for fallback
+        let createdAtDate: Date;
+
+        if (typeof createdAt === "string") {
+          createdAtDate = new Date(createdAt);
+        } else if (createdAt instanceof Date) {
+          createdAtDate = createdAt;
+        } else {
+          // Fallback to current date if invalid
+          console.error("Invalid createdAt value in fallback:", createdAt);
+          createdAtDate = new Date();
+        }
+
         const startKey = gte
-          ? [threadId, createdAt]
-          : [threadId, new Date(createdAt.getTime() + 1)];
+          ? [threadId, createdAtDate]
+          : [threadId, new Date(createdAtDate.getTime() + 1)];
         const endKey = [threadId, new Date()];
 
         await db.transaction(

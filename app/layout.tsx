@@ -2,9 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "katex/dist/katex.min.css";
-import { Toaster } from "@/components/ui/sonner";
-import { ThemeProvider } from "@/components/ui/ThemeProvider";
-import { AuthProvider } from "@/components/auth/AuthProvider";
 import Providers from "./providers";
 
 const geistSans = Geist({
@@ -30,7 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased overflow-y-hidden`}
       >
         <Providers>{children}</Providers>
       </body>

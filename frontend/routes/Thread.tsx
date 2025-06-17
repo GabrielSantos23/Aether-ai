@@ -6,6 +6,8 @@ import { type DBMessage } from "../dexie/db";
 import { UIMessage } from "ai";
 import { useDataService } from "@/frontend/hooks/useDataService";
 import { useEffect, useState } from "react";
+import { RightSidebar } from "../components/sidebar/RightSidebar";
+import { SidebarButtonsRight } from "../components/sidebar/sidebar-buttons";
 
 // Define ExtendedUIMessage interface to include sources and reasoning
 interface ExtendedUIMessage extends UIMessage {
@@ -68,5 +70,15 @@ export default function Thread() {
     ? serverMessages
     : convertToUIMessages(localMessages);
 
-  return <Chat key={id} threadId={id} initialMessages={messagesToUse} />;
+  return (
+    <div className="relative w-full">
+      <Chat
+        key={id}
+        threadId={id}
+        initialMessages={messagesToUse}
+        isLoadingMessages={isLoadingMessages}
+      />
+      <SidebarButtonsRight threadId={id} />
+    </div>
+  );
 }

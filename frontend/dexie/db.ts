@@ -7,6 +7,8 @@ interface Thread {
   createdAt: Date;
   updatedAt: Date;
   lastMessageAt: Date;
+  parentThreadId?: string;
+  branchedFromMessageId?: string;
 }
 
 // Define a type for search sources

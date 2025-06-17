@@ -248,10 +248,6 @@
 /* Fix for image rendering in markdown */
 .prose img {
   max-width: 100%;
-  height: auto;
-  border-radius: 0.375rem;
-  margin: 0.75rem 0;
-  display: block;
 }
 
 /* Ensure proper handling of data URLs */

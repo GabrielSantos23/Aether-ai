@@ -45,7 +45,6 @@ export default function Sidebar({ children }: { children: React.ReactNode }) {
     >
       <SidebarProvider defaultOpen={defaultOpen} defaultOpenRight={false}>
         <SidebarButtons />
-        <SidebarButtonsRight />
         <ChatSidebar />
 
         <SidebarInset className="overflow-hidden">

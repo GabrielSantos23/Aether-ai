@@ -15,6 +15,7 @@ import {
   Search,
   BrainCircuit,
   Image as ImageIcon,
+  Loader2,
 } from "lucide-react";
 import { useChatNavigator } from "@/frontend/hooks/useChatNavigator";
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -40,6 +41,7 @@ interface ExtendedUIMessage extends UIMessage {
 interface ChatProps {
   threadId: string;
   initialMessages: ExtendedUIMessage[];
+  isLoadingMessages?: boolean;
 }
 
 // Define types for the data stream
@@ -76,7 +78,11 @@ interface WebSearchMetadata {
   totalResults?: number;
 }
 
-export default function Chat({ threadId, initialMessages }: ChatProps) {
+export default function Chat({
+  threadId,
+  initialMessages,
+  isLoadingMessages = false,
+}: ChatProps) {
   const { getKey } = useAPIKeyStore();
   const selectedModel = useModelStore((state) => state.selectedModel);
   const modelConfig = useModelStore((state) => state.getModelConfig());
@@ -513,6 +519,42 @@ export default function Chat({ threadId, initialMessages }: ChatProps) {
     },
   });
 
+  // Function to scroll to the last message
+  const scrollToLastMessage = useCallback(() => {
+    setTimeout(() => {
+      if (messages && messages.length > 0) {
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage && lastMessage.id) {
+          console.log("Scrolling to last message:", lastMessage.id);
+          // Try to find the element with the message ID
+          const messageElement = document.getElementById(
+            `message-${lastMessage.id}`
+          );
+          if (messageElement) {
+            messageElement.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
+            });
+            return;
+          }
+        }
+      }
+
+      // Fallback: scroll to bottom if we can't find the last message
+      window.scrollTo({
+        top: document.body.scrollHeight,
+        behavior: "smooth",
+      });
+    }, 100);
+  }, [messages]);
+
+  // Scroll to last message when messages change or when component mounts
+  useEffect(() => {
+    if (messages && messages.length > 0) {
+      scrollToLastMessage();
+    }
+  }, [messages, scrollToLastMessage]);
+
   // Handle custom submit to clear search sources for new queries
   const handleSubmit = useCallback(
     (e?: React.FormEvent<HTMLFormElement>) => {
@@ -917,180 +959,218 @@ export default function Chat({ threadId, initialMessages }: ChatProps) {
 
   return (
     <div className="relative w-full">
-      <main
-        className={`flex flex-col w-full max-w-3xl pt-10 pb-44 mx-auto transition-all duration-300 ease-in-out`}
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          zIndex: 50,
+          pointerEvents: "none",
+        }}
       >
-        <Messages
-          threadId={threadId}
-          messages={messages}
-          status={status}
-          setMessages={setMessages}
-          reload={reload}
-          error={error}
-          registerRef={registerRef}
-          stop={stop}
-          searchSources={searchSources}
+        <div
+          className={`transition-all duration-300 h-0.5 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 ${
+            isLoading ||
+            status === "submitted" ||
+            status === "streaming" ||
+            isLoadingMessages
+              ? "w-full opacity-100"
+              : "w-0 opacity-0"
+          }`}
+          style={{
+            transitionProperty: "width, opacity",
+          }}
         />
-        <ChatInput
-          threadId={threadId}
-          input={input}
-          status={status}
-          append={append}
-          setInput={setInput}
-          stop={stop}
-          activeTools={activeTools}
-          handleSubmit={handleSubmit}
-          handleInputChange={handleInputChange}
-          hasMessages={messages.length > 0}
-          setHasMessages={() => {}}
-          setActiveTools={setActiveTools}
-        />
-      </main>
+      </div>
+      <div className="relative w-full">
+        <main
+          className={`flex flex-col w-full max-w-3xl pt-10 pb-44 mx-auto transition-all duration-300 ease-in-out`}
+        >
+          {isLoadingMessages && (
+            <div className="flex justify-center items-center py-10">
+              <Loader2
+                className="animate-spin text-muted-foreground"
+                size={20}
+                style={{
+                  animationDuration: "300ms",
+                  animationTimingFunction: "linear",
+                }}
+              />
+            </div>
+          )}
+          <Messages
+            threadId={threadId}
+            messages={messages}
+            status={status}
+            setMessages={setMessages}
+            reload={reload}
+            error={error}
+            registerRef={registerRef}
+            stop={stop}
+            searchSources={searchSources}
+          />
+          <ChatInput
+            threadId={threadId}
+            input={input}
+            status={status}
+            append={append}
+            setInput={setInput}
+            stop={stop}
+            activeTools={activeTools}
+            handleSubmit={handleSubmit}
+            handleInputChange={handleInputChange}
+            hasMessages={messages.length > 0}
+            setHasMessages={() => {}}
+            setActiveTools={setActiveTools}
+          />
+        </main>
 
-      {/* Tool toggles */}
-      {/* <div className="fixed right-16 top-4 z-20 flex gap-2">
+        {/* Tool toggles */}
+        {/* <div className="fixed right-16 top-4 z-20 flex gap-2">
         <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div>
-                <Button
-                  onClick={() => toggleTool("webSearch")}
-                  variant={activeTools.webSearch ? "default" : "outline"}
-                  size="icon"
-                  className="relative"
-                  aria-label={
-                    activeTools.webSearch
-                      ? "Disable web search"
-                      : "Enable web search"
-                  }
-                  title="Web Search"
-                  disabled={!supportsTools}
-                >
-                  <Search className="h-5 w-5" />
-                  {activeTools.webSearch && (
-                    <span className="absolute top-0 right-0 h-2 w-2 bg-green-500 rounded-full" />
-                  )}
-                </Button>
-              </div>
+        <Tooltip>
+        <TooltipTrigger asChild>
+        <div>
+        <Button
+        onClick={() => toggleTool("webSearch")}
+        variant={activeTools.webSearch ? "default" : "outline"}
+        size="icon"
+        className="relative"
+        aria-label={
+          activeTools.webSearch
+          ? "Disable web search"
+          : "Enable web search"
+          }
+          title="Web Search"
+          disabled={!supportsTools}
+          >
+          <Search className="h-5 w-5" />
+          {activeTools.webSearch && (
+            <span className="absolute top-0 right-0 h-2 w-2 bg-green-500 rounded-full" />
+            )}
+            </Button>
+            </div>
             </TooltipTrigger>
             {!supportsTools && (
               <TooltipContent>
-                <p>Web search not supported by {selectedModel}</p>
+              <p>Web search not supported by {selectedModel}</p>
               </TooltipContent>
-            )}
-          </Tooltip>
-        </TooltipProvider>
-
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
+              )}
+              </Tooltip>
+              </TooltipProvider>
+              
+              <TooltipProvider>
+              <Tooltip>
+              <TooltipTrigger asChild>
               <div>
-                <Button
-                  onClick={() => toggleTool("imageAnalysis")}
-                  variant={activeTools.imageAnalysis ? "default" : "outline"}
-                  size="icon"
-                  className="relative"
-                  aria-label={
-                    activeTools.imageAnalysis
-                      ? "Disable image analysis"
-                      : "Enable image analysis"
-                  }
-                  title="Image Analysis"
-                  disabled={!supportsTools}
+              <Button
+              onClick={() => toggleTool("imageAnalysis")}
+              variant={activeTools.imageAnalysis ? "default" : "outline"}
+              size="icon"
+              className="relative"
+              aria-label={
+                activeTools.imageAnalysis
+                ? "Disable image analysis"
+                : "Enable image analysis"
+                }
+                title="Image Analysis"
+                disabled={!supportsTools}
                 >
-                  <ImageIcon className="h-5 w-5" />
-                  {activeTools.imageAnalysis && (
-                    <span className="absolute top-0 right-0 h-2 w-2 bg-green-500 rounded-full" />
+                <ImageIcon className="h-5 w-5" />
+                {activeTools.imageAnalysis && (
+                  <span className="absolute top-0 right-0 h-2 w-2 bg-green-500 rounded-full" />
                   )}
-                </Button>
-              </div>
-            </TooltipTrigger>
-            {!supportsTools && (
-              <TooltipContent>
-                <p>Image analysis not supported by {selectedModel}</p>
-              </TooltipContent>
-            )}
-          </Tooltip>
-        </TooltipProvider>
-
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div>
-                <Button
-                  onClick={() => toggleTool("thinking")}
-                  variant={activeTools.thinking ? "default" : "outline"}
-                  size="icon"
-                  className="relative"
-                  aria-label={
-                    activeTools.thinking
+                  </Button>
+                  </div>
+                  </TooltipTrigger>
+                  {!supportsTools && (
+                    <TooltipContent>
+                    <p>Image analysis not supported by {selectedModel}</p>
+                    </TooltipContent>
+                    )}
+                    </Tooltip>
+                    </TooltipProvider>
+                    
+                    <TooltipProvider>
+                    <Tooltip>
+                    <TooltipTrigger asChild>
+                    <div>
+                    <Button
+                    onClick={() => toggleTool("thinking")}
+                    variant={activeTools.thinking ? "default" : "outline"}
+                    size="icon"
+                    className="relative"
+                    aria-label={
+                      activeTools.thinking
                       ? "Disable thinking"
                       : "Enable thinking"
-                  }
-                  title="Step-by-step Thinking"
-                  disabled={!supportsTools}
-                >
-                  <BrainCircuit className="h-5 w-5" />
-                  {activeTools.thinking && (
-                    <span className="absolute top-0 right-0 h-2 w-2 bg-green-500 rounded-full" />
-                  )}
-                </Button>
-              </div>
-            </TooltipTrigger>
-            {!supportsTools && (
-              <TooltipContent>
-                <p>Thinking tool not supported by {selectedModel}</p>
-              </TooltipContent>
-            )}
-          </Tooltip>
-        </TooltipProvider>
-
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div>
-                <Button
-                  onClick={() => toggleTool("imageGeneration")}
-                  variant={activeTools.imageGeneration ? "default" : "outline"}
-                  size="icon"
-                  className="relative"
-                  aria-label={
-                    activeTools.imageGeneration
-                      ? "Disable image generation"
-                      : "Enable image generation"
-                  }
-                  title="Image Generation"
-                  disabled={!modelConfig.supportsImageGeneration}
-                >
-                  <ImageIcon className="h-5 w-5" />
-                  {activeTools.imageGeneration && (
-                    <span className="absolute top-0 right-0 h-2 w-2 bg-green-500 rounded-full" />
-                  )}
-                </Button>
-              </div>
-            </TooltipTrigger>
-            {!modelConfig.supportsImageGeneration && (
-              <TooltipContent>
-                <p>Image generation not supported by {selectedModel}</p>
-              </TooltipContent>
-            )}
-          </Tooltip>
-        </TooltipProvider>
-
-        <Button
-          onClick={handleToggleNavigator}
-          variant="outline"
-          size="icon"
-          aria-label={
-            isNavigatorVisible
-              ? "Hide message navigator"
-              : "Show message navigator"
-          }
-          title="Message Navigator"
-        >
-          <MessageSquareMore className="h-5 w-5" />
-        </Button>
-      </div> */}
+                      }
+                      title="Step-by-step Thinking"
+                      disabled={!supportsTools}
+                      >
+                      <BrainCircuit className="h-5 w-5" />
+                      {activeTools.thinking && (
+                        <span className="absolute top-0 right-0 h-2 w-2 bg-green-500 rounded-full" />
+                        )}
+                        </Button>
+                        </div>
+                        </TooltipTrigger>
+                        {!supportsTools && (
+                          <TooltipContent>
+                          <p>Thinking tool not supported by {selectedModel}</p>
+                          </TooltipContent>
+                          )}
+                          </Tooltip>
+                          </TooltipProvider>
+                          
+                          <TooltipProvider>
+                          <Tooltip>
+                          <TooltipTrigger asChild>
+                          <div>
+                          <Button
+                          onClick={() => toggleTool("imageGeneration")}
+                          variant={activeTools.imageGeneration ? "default" : "outline"}
+                          size="icon"
+                          className="relative"
+                          aria-label={
+                            activeTools.imageGeneration
+                            ? "Disable image generation"
+                            : "Enable image generation"
+                            }
+                            title="Image Generation"
+                            disabled={!modelConfig.supportsImageGeneration}
+                            >
+                            <ImageIcon className="h-5 w-5" />
+                            {activeTools.imageGeneration && (
+                              <span className="absolute top-0 right-0 h-2 w-2 bg-green-500 rounded-full" />
+                              )}
+                              </Button>
+                              </div>
+                              </TooltipTrigger>
+                              {!modelConfig.supportsImageGeneration && (
+                                <TooltipContent>
+                                <p>Image generation not supported by {selectedModel}</p>
+                                </TooltipContent>
+                                )}
+                                </Tooltip>
+                                </TooltipProvider>
+                                
+                                <Button
+                                onClick={handleToggleNavigator}
+                                variant="outline"
+                                size="icon"
+                                aria-label={
+                                  isNavigatorVisible
+                                  ? "Hide message navigator"
+                                  : "Show message navigator"
+                                  }
+                                  title="Message Navigator"
+                                  >
+                                  <MessageSquareMore className="h-5 w-5" />
+                                  </Button>
+                                  </div> */}
+      </div>
     </div>
   );
 }
