@@ -167,12 +167,9 @@ function PureChatInput({
         imageGeneration:
           !!modelConfig.supportsImageGeneration && activeTools.imageGeneration,
         fileUpload: !!modelConfig.supportsFileUpload && activeTools.fileUpload,
-        codeExecution:
-          !!modelConfig.supportsCodeExecution && activeTools.codeExecution,
-        audioGeneration:
-          !!modelConfig.supportsAudioGeneration && activeTools.audioGeneration,
-        videoGeneration:
-          !!modelConfig.supportsVideoGeneration && activeTools.videoGeneration,
+        codeExecution: false,
+        audioGeneration: false,
+        videoGeneration: false,
       });
     }
   }, [selectedModel, modelConfig]);
