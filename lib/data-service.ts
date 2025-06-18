@@ -77,7 +77,11 @@ export class DataService {
   }
 
   // Create a new thread
-  async createThread(id: string, title: string = "New Chat") {
+  async createThread(
+    id: string,
+    title: string = "New Chat",
+    isBranch: boolean = false
+  ) {
     try {
       const isAuth = await this.isAuthenticated();
       const userId = await this.getCurrentUserId();
@@ -91,6 +95,7 @@ export class DataService {
           createdAt: new Date(),
           updatedAt: new Date(),
           lastMessageAt: new Date(),
+          isBranch,
         });
       } else {
         // Use IndexedDB via Dexie for local storage
@@ -101,6 +106,7 @@ export class DataService {
           createdAt: new Date(),
           updatedAt: new Date(),
           lastMessageAt: new Date(),
+          isBranch,
         });
       }
     } catch (error) {

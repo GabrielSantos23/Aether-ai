@@ -22,6 +22,8 @@ const formSchema = z.object({
   }),
   openrouter: z.string().trim().optional(),
   openai: z.string().trim().optional(),
+  anthropic: z.string().trim().optional(),
+  deepseek: z.string().trim().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -44,6 +46,18 @@ const modelUrls: Record<string, Record<string, string>> = {
   openai: {
     "GPT-4o": "https://platform.openai.com/docs/models/gpt-4o",
     "GPT-4.1-mini": "https://platform.openai.com/docs/models/gpt-4-1-mini",
+  },
+  anthropic: {
+    "Claude Opus 4": "https://docs.anthropic.com/claude/docs/models-overview",
+    "Claude Sonnet 4": "https://docs.anthropic.com/claude/docs/models-overview",
+    "Claude Sonnet 3.5":
+      "https://docs.anthropic.com/claude/docs/models-overview",
+    "Claude Haiku 3.5":
+      "https://docs.anthropic.com/claude/docs/models-overview",
+  },
+  deepseek: {
+    "Deepseek Coder V2": "https://platform.deepseek.com",
+    "Deepseek V2.5": "https://platform.deepseek.com",
   },
 };
 
@@ -139,6 +153,46 @@ const Form = () => {
         placeholder="sk-..."
         register={register}
         error={errors.openai}
+      />
+
+      <ApiKeyField
+        id="anthropic"
+        label="Anthropic API Key"
+        models={[
+          { name: "Claude Opus 4", url: modelUrls.anthropic["Claude Opus 4"] },
+          {
+            name: "Claude Sonnet 4",
+            url: modelUrls.anthropic["Claude Sonnet 4"],
+          },
+          {
+            name: "Claude Sonnet 3.5",
+            url: modelUrls.anthropic["Claude Sonnet 3.5"],
+          },
+          {
+            name: "Claude Haiku 3.5",
+            url: modelUrls.anthropic["Claude Haiku 3.5"],
+          },
+        ]}
+        linkUrl="https://console.anthropic.com/settings/keys"
+        placeholder="sk-ant-..."
+        register={register}
+        error={errors.anthropic}
+      />
+
+      <ApiKeyField
+        id="deepseek"
+        label="DeepSeek API Key"
+        models={[
+          {
+            name: "Deepseek Coder V2",
+            url: modelUrls.deepseek["Deepseek Coder V2"],
+          },
+          { name: "Deepseek V2.5", url: modelUrls.deepseek["Deepseek V2.5"] },
+        ]}
+        linkUrl="https://platform.deepseek.com"
+        placeholder="sk-..."
+        register={register}
+        error={errors.deepseek}
       />
 
       <Button type="submit" className="w-full" disabled={!isDirty}>

@@ -1,31 +1,25 @@
 "use client";
 
 import {
-  ChevronDown,
-  Check,
   ArrowUpIcon,
   ImageIcon,
   SearchIcon,
   BrainCircuitIcon,
   Sparkles,
+  FileUpIcon,
+  Code,
+  Music,
+  Video,
 } from "lucide-react";
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState, useEffect } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import useAutoResizeTextarea from "@/hooks/useAutoResizeTextArea";
 import { UseChatHelpers, useCompletion } from "@ai-sdk/react";
 import { useParams } from "react-router";
 import { useNavigate } from "react-router";
 import { useAPIKeyStore } from "@/frontend/stores/APIKeyStore";
-import { useModelStore } from "@/frontend/stores/ModelStore";
-import { AI_MODELS, AIModel, getModelConfig } from "@/lib/models";
 import KeyPrompt from "@/frontend/components/KeyPrompt";
 import { UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
@@ -42,7 +36,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useThreadCreator } from "@/frontend/hooks/useThreadCreator";
+import { useModelStore } from "@/frontend/stores/ModelStore";
+import { getModelConfig } from "@/lib/models";
 
 interface ChatInputProps {
   threadId: string;
@@ -56,6 +51,10 @@ interface ChatInputProps {
     imageAnalysis: boolean;
     thinking: boolean;
     imageGeneration: boolean;
+    fileUpload: boolean;
+    codeExecution: boolean;
+    audioGeneration: boolean;
+    videoGeneration: boolean;
   };
   handleSubmit?: (e?: React.FormEvent<HTMLFormElement>) => void;
   handleInputChange?: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
@@ -66,6 +65,10 @@ interface ChatInputProps {
     imageAnalysis: boolean;
     thinking: boolean;
     imageGeneration: boolean;
+    fileUpload: boolean;
+    codeExecution: boolean;
+    audioGeneration: boolean;
+    videoGeneration: boolean;
   }) => void;
 }
 
@@ -142,7 +145,8 @@ function PureChatInput({
   const [showImagePreview, setShowImagePreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { dataService } = useDataService();
-  const { isCreator, isLoading: creatorLoading } = useThreadCreator(threadId);
+  const { selectedModel } = useModelStore();
+  const modelConfig = getModelConfig(selectedModel);
 
   const { textareaRef, adjustHeight } = useAutoResizeTextarea({
     minHeight: 72,
@@ -152,13 +156,33 @@ function PureChatInput({
   const navigate = useNavigate();
   const { id } = useParams();
 
+  // Update active tools based on selected model capabilities
+  useEffect(() => {
+    if (setActiveTools) {
+      setActiveTools({
+        webSearch: !!modelConfig.supportsWebSearch && activeTools.webSearch,
+        imageAnalysis:
+          !!modelConfig.supportsVision && activeTools.imageAnalysis,
+        thinking: !!modelConfig.supportsThinking && activeTools.thinking,
+        imageGeneration:
+          !!modelConfig.supportsImageGeneration && activeTools.imageGeneration,
+        fileUpload: !!modelConfig.supportsFileUpload && activeTools.fileUpload,
+        codeExecution:
+          !!modelConfig.supportsCodeExecution && activeTools.codeExecution,
+        audioGeneration:
+          !!modelConfig.supportsAudioGeneration && activeTools.audioGeneration,
+        videoGeneration:
+          !!modelConfig.supportsVideoGeneration && activeTools.videoGeneration,
+      });
+    }
+  }, [selectedModel, modelConfig]);
+
   const isDisabled = useMemo(
     () =>
       (!input.trim() && !imageUrl) ||
       status === "streaming" ||
-      status === "submitted" ||
-      (!!id && !creatorLoading && !isCreator),
-    [input, imageUrl, status, id, creatorLoading, isCreator]
+      status === "submitted",
+    [input, imageUrl, status]
   );
 
   const { complete } = useMessageSummary();
@@ -169,8 +193,7 @@ function PureChatInput({
     if (
       (!currentInput.trim() && !imageUrl) ||
       status === "streaming" ||
-      status === "submitted" ||
-      (!!id && !isCreator)
+      status === "submitted"
     )
       return;
 
@@ -211,7 +234,6 @@ function PureChatInput({
     threadId,
     complete,
     dataService,
-    isCreator,
   ]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -301,18 +323,6 @@ function PureChatInput({
     return <KeyPrompt />;
   }
 
-  if (id && !creatorLoading && !isCreator) {
-    return (
-      <div className="fixed w-full max-w-3xl bottom-0">
-        <div className="bg-card relative rounded-lg p-4 w-full text-center mb-2">
-          <p className="text-muted-foreground">
-            You are viewing a shared chat. Only the creator can send messages.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -393,139 +403,205 @@ function PureChatInput({
               <div className="flex items-center justify-between w-full">
                 <div className="flex items-center gap-2">
                   <TooltipProvider>
-                    {/* Web Search toggle */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant={"ghost"}
-                          size="icon"
-                          className={cn(
-                            "h-8 w-8",
-                            activeTools.webSearch &&
-                              "bg-blue-500/20 text-blue-500 hover:bg-blue-500/30 hover:text-blue-600"
-                          )}
-                          onClick={() => toggleTool("webSearch")}
-                          aria-label={
-                            activeTools.webSearch
-                              ? "Disable web search"
-                              : "Enable web search"
-                          }
-                        >
-                          <SearchIcon className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        {activeTools.webSearch
-                          ? "Disable web search"
-                          : "Enable web search"}
-                      </TooltipContent>
-                    </Tooltip>
+                    {/* Web Search toggle - only show if model supports it */}
+                    {modelConfig.supportsWebSearch && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={"ghost"}
+                            size="icon"
+                            className={cn(
+                              "h-8 w-8",
+                              activeTools.webSearch &&
+                                "bg-blue-500/20 text-blue-500 hover:bg-blue-500/30 hover:text-blue-600"
+                            )}
+                            onClick={() => toggleTool("webSearch")}
+                            aria-label={
+                              activeTools.webSearch
+                                ? "Disable web search"
+                                : "Enable web search"
+                            }
+                          >
+                            <SearchIcon className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          {activeTools.webSearch
+                            ? "Disable web search"
+                            : "Enable web search"}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
 
-                    {/* Thinking toggle */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant={"ghost"}
-                          size="icon"
-                          className={cn(
-                            "h-8 w-8",
-                            activeTools.thinking &&
-                              "bg-purple-500/20 text-purple-500 hover:bg-purple-500/30 hover:text-purple-600"
-                          )}
-                          onClick={() => toggleTool("thinking")}
-                          aria-label={
-                            activeTools.thinking
-                              ? "Disable step-by-step thinking"
-                              : "Enable step-by-step thinking"
-                          }
-                        >
-                          <BrainCircuitIcon className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        {activeTools.thinking
-                          ? "Disable step-by-step thinking"
-                          : "Enable step-by-step thinking"}
-                      </TooltipContent>
-                    </Tooltip>
+                    {/* Thinking toggle - only show if model supports it */}
+                    {modelConfig.supportsThinking && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={"ghost"}
+                            size="icon"
+                            className={cn(
+                              "h-8 w-8",
+                              activeTools.thinking &&
+                                "bg-purple-500/20 text-purple-500 hover:bg-purple-500/30 hover:text-purple-600"
+                            )}
+                            onClick={() => toggleTool("thinking")}
+                            aria-label={
+                              activeTools.thinking
+                                ? "Disable step-by-step thinking"
+                                : "Enable step-by-step thinking"
+                            }
+                          >
+                            <BrainCircuitIcon className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          {activeTools.thinking
+                            ? "Disable step-by-step thinking"
+                            : "Enable step-by-step thinking"}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
 
-                    {/* Image Analysis toggle */}
+                    {/* Image Analysis toggle - only show if model supports vision */}
+                    {modelConfig.supportsVision && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={"ghost"}
+                            size="icon"
+                            className="h-8 w-8 opacity-50 cursor-not-allowed"
+                            disabled
+                            aria-label="Image analysis - Coming soon"
+                          >
+                            <ImageIcon className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          Coming soon: Image analysis
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+
+                    {/* Image Generation toggle - only show if model supports it */}
+                    {modelConfig.supportsImageGeneration && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={"ghost"}
+                            size="icon"
+                            className="h-8 w-8 opacity-50 cursor-not-allowed"
+                            disabled
+                            aria-label="Image generation - Coming soon"
+                          >
+                            <Sparkles className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          Coming soon: Image generation
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+
+                    {/* File Upload toggle - only show if model supports it */}
+                    {modelConfig.supportsFileUpload && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={"ghost"}
+                            size="icon"
+                            className="h-8 w-8 opacity-50 cursor-not-allowed"
+                            disabled
+                            aria-label="File upload - Coming soon"
+                          >
+                            <FileUpIcon className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          Coming soon: File upload
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+
+                    {/* Code Execution toggle - only show if model supports it */}
+                    {modelConfig.supportsCodeExecution && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={"ghost"}
+                            size="icon"
+                            className="h-8 w-8 opacity-50 cursor-not-allowed"
+                            disabled
+                            aria-label="Code execution - Coming soon"
+                          >
+                            <Code className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          Coming soon: Code execution
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+
+                    {/* Audio Generation toggle - only show if model supports it */}
+                    {modelConfig.supportsAudioGeneration && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={"ghost"}
+                            size="icon"
+                            className="h-8 w-8 opacity-50 cursor-not-allowed"
+                            disabled
+                            aria-label="Audio generation - Coming soon"
+                          >
+                            <Music className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          Coming soon: Audio generation
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+
+                    {/* Video Generation toggle - only show if model supports it */}
+                    {modelConfig.supportsVideoGeneration && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={"ghost"}
+                            size="icon"
+                            className="h-8 w-8 opacity-50 cursor-not-allowed"
+                            disabled
+                            aria-label="Video generation - Coming soon"
+                          >
+                            <Video className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          Coming soon: Video generation
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </TooltipProvider>
+
+                  {/* Image upload button - only show if image analysis is active */}
+                  {activeTools.imageAnalysis && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
-                          variant={"ghost"}
+                          variant="ghost"
                           size="icon"
-                          className={cn(
-                            "h-8 w-8",
-                            activeTools.imageAnalysis &&
-                              "bg-amber-500/20 text-amber-500 hover:bg-amber-500/30 hover:text-amber-600"
-                          )}
-                          onClick={() => toggleTool("imageAnalysis")}
-                          aria-label={
-                            activeTools.imageAnalysis
-                              ? "Disable image analysis"
-                              : "Enable image analysis"
-                          }
+                          className="h-8 w-8 opacity-50 cursor-not-allowed"
+                          disabled
+                          aria-label="Image upload - Coming soon"
                         >
                           <ImageIcon className="h-4 w-4" />
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent side="bottom">
-                        {activeTools.imageAnalysis
-                          ? "Disable image analysis"
-                          : "Enable image analysis"}
+                        Coming soon: Image upload
                       </TooltipContent>
                     </Tooltip>
-
-                    {/* Image Generation toggle */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant={"ghost"}
-                          size="icon"
-                          className={cn(
-                            "h-8 w-8",
-                            activeTools.imageGeneration &&
-                              "bg-green-500/20 text-green-500 hover:bg-green-500/30 hover:text-green-600"
-                          )}
-                          onClick={() => toggleTool("imageGeneration")}
-                          aria-label={
-                            activeTools.imageGeneration
-                              ? "Disable image generation"
-                              : "Enable image generation"
-                          }
-                        >
-                          <Sparkles className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        {activeTools.imageGeneration
-                          ? "Disable image generation"
-                          : "Enable image generation"}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-
-                  {/* Image upload button - only show if image analysis is active */}
-                  {activeTools.imageAnalysis && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => fileInputRef.current?.click()}
-                      aria-label="Upload image"
-                      title="Upload image for analysis"
-                    >
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleImageUpload}
-                        aria-label="Upload image"
-                      />
-                      <ImageIcon className="h-4 w-4" />
-                    </Button>
                   )}
                 </div>
 
@@ -555,6 +631,10 @@ function getPlaceholder(activeTools: {
   imageAnalysis: boolean;
   thinking: boolean;
   imageGeneration: boolean;
+  fileUpload: boolean;
+  codeExecution: boolean;
+  audioGeneration: boolean;
+  videoGeneration: boolean;
 }) {
   const activeToolCount = Object.values(activeTools).filter(Boolean).length;
 
@@ -567,6 +647,10 @@ function getPlaceholder(activeTools: {
   if (activeTools.imageAnalysis) tools.push("image analysis");
   if (activeTools.thinking) tools.push("step-by-step thinking");
   if (activeTools.imageGeneration) tools.push("image generation");
+  if (activeTools.fileUpload) tools.push("file upload");
+  if (activeTools.codeExecution) tools.push("code execution");
+  if (activeTools.audioGeneration) tools.push("audio generation");
+  if (activeTools.videoGeneration) tools.push("video generation");
 
   return `Ask me anything using ${tools.join(", ")}...`;
 }
@@ -588,69 +672,27 @@ const ChatInput = memo(PureChatInput, (prevProps, nextProps) => {
     nextProps.activeTools.imageGeneration
   )
     return false;
+  if (prevProps.activeTools.fileUpload !== nextProps.activeTools.fileUpload)
+    return false;
+  if (
+    prevProps.activeTools.codeExecution !== nextProps.activeTools.codeExecution
+  )
+    return false;
+  if (
+    prevProps.activeTools.audioGeneration !==
+    nextProps.activeTools.audioGeneration
+  )
+    return false;
+  if (
+    prevProps.activeTools.videoGeneration !==
+    nextProps.activeTools.videoGeneration
+  )
+    return false;
   return true;
 });
 
-const PureChatModelDropdown = () => {
-  const getKey = useAPIKeyStore((state) => state.getKey);
-  const { selectedModel, setModel } = useModelStore();
-
-  const isModelEnabled = useCallback(
-    (model: AIModel) => {
-      const modelConfig = getModelConfig(model);
-      const apiKey = getKey(modelConfig.provider);
-      return !!apiKey;
-    },
-    [getKey]
-  );
-
-  return (
-    <div className="flex items-center gap-2">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            className="flex items-center gap-1 h-8 pl-2 pr-2 text-xs rounded-md text-foreground hover:bg-primary/10 focus-visible:ring-1 focus-visible:ring-offset-0 focus-visible:ring-blue-500"
-            aria-label={`Selected model: ${selectedModel}`}
-          >
-            <div className="flex items-center gap-1">
-              {selectedModel}
-              <ChevronDown className="w-3 h-3 opacity-50" />
-            </div>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          className={cn("min-w-[10rem]", "border-border", "bg-popover")}
-        >
-          {AI_MODELS.map((model) => {
-            const isEnabled = isModelEnabled(model);
-            return (
-              <DropdownMenuItem
-                key={model}
-                onSelect={() => isEnabled && setModel(model)}
-                disabled={!isEnabled}
-                className={cn(
-                  "flex items-center justify-between gap-2",
-                  "cursor-pointer"
-                )}
-              >
-                <span>{model}</span>
-                {selectedModel === model && (
-                  <Check
-                    className="w-4 h-4 text-blue-500"
-                    aria-label="Selected"
-                  />
-                )}
-              </DropdownMenuItem>
-            );
-          })}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  );
-};
-
-const ChatModelDropdown = memo(PureChatModelDropdown);
+// ChatModelDropdown component moved to its own file
+import ChatModelDropdown from "./ChatModelDropdown";
 
 function PureStopButton({ stop }: StopButtonProps) {
   return (

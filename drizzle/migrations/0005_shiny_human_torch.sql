@@ -1,0 +1,1 @@
+ALTER TABLE "threads" ALTER COLUMN "is_public" SET NOT NULL;

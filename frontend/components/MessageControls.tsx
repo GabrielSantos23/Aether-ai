@@ -3,7 +3,14 @@
 import { Dispatch, SetStateAction, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { cn } from "@/lib/utils";
-import { Check, Copy, RefreshCcw, SquarePen, GitBranch } from "lucide-react";
+import {
+  Check,
+  Copy,
+  RefreshCcw,
+  SquarePen,
+  GitBranch,
+  Loader2,
+} from "lucide-react";
 import { UIMessage } from "ai";
 import { UseChatHelpers } from "@ai-sdk/react";
 import { useAPIKeyStore } from "@/frontend/stores/APIKeyStore";
@@ -11,7 +18,6 @@ import { useDataService } from "@/frontend/hooks/useDataService";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
-import { DBMessage } from "@/frontend/dexie/db";
 
 interface MessageControlsProps {
   threadId: string;
@@ -111,86 +117,160 @@ export default function MessageControls({
 
     try {
       setIsBranching(true);
-      console.log(
-        "Branching from message:",
-        message.id,
-        "Content:",
-        message.content.substring(0, 50)
-      );
+      console.log("Branching from message:", message);
 
-      // Get all messages up to and including the current message
-      const allMessages = await dataService.getMessagesByThreadId(threadId);
-      console.log("All messages in thread:", allMessages.length);
-      console.log(
-        "Sample message IDs:",
-        allMessages.slice(0, 3).map((m: DBMessage) => m.id)
-      );
+      // Get messages to branch with - first try from the current UI state
+      let messagesForBranch: any[] = [];
 
-      // Try different methods to find the message
-      let messageIndex = allMessages.findIndex(
-        (m: DBMessage) => m.id === message.id
-      );
-
-      // If not found by ID, try matching by content
-      if (messageIndex === -1 && message.content) {
-        console.log("Message not found by ID, trying to match by content");
-        messageIndex = allMessages.findIndex(
-          (m: DBMessage) =>
-            m.role === message.role &&
-            m.content &&
-            message.content &&
-            m.content.substring(0, 40) === message.content.substring(0, 40)
+      // Use the current UI messages from the setMessages function
+      setMessages((currentMessages) => {
+        // Find the index of the clicked message
+        const messageIndex = currentMessages.findIndex(
+          (m) => m.id === message.id
         );
+
+        if (messageIndex !== -1) {
+          // Only include messages up to and including the clicked message
+          messagesForBranch = currentMessages.slice(0, messageIndex + 1);
+          console.log(
+            `Found message at index ${messageIndex}, including ${messagesForBranch.length} messages in branch`
+          );
+        }
+        return currentMessages; // Don't actually change the messages
+      });
+
+      // If we couldn't find the message in UI state, try fetching from server
+      if (messagesForBranch.length === 0) {
+        console.log(
+          "Message not found in UI state, trying to fetch from server..."
+        );
+        try {
+          const allMessages = await dataService.getMessagesByThreadId(threadId);
+          console.log("Current message ID:", message.id);
+          console.log("All messages from server:", allMessages.length);
+
+          // Try to find the message in the thread
+          const messageIndex = allMessages.findIndex(
+            (m: any) => m.id === message.id
+          );
+
+          if (messageIndex !== -1) {
+            // Only include messages up to and including the clicked message
+            messagesForBranch = allMessages.slice(0, messageIndex + 1);
+            console.log(
+              `Found message at index ${messageIndex}, including ${messagesForBranch.length} messages in branch`
+            );
+          } else {
+            // If not found by ID, try to find by content and role as a fallback
+            console.log(
+              "Message not found by ID, trying to find by content..."
+            );
+            const contentIndex = allMessages.findIndex(
+              (m: any) =>
+                m.role === message.role && m.content === message.content
+            );
+
+            if (contentIndex !== -1) {
+              messagesForBranch = allMessages.slice(0, contentIndex + 1);
+              console.log(
+                `Found message by content at index ${contentIndex}, including ${messagesForBranch.length} messages in branch`
+              );
+            }
+          }
+        } catch (fetchError) {
+          console.error("Error fetching messages:", fetchError);
+          // Continue with empty messages array - we'll check length below
+        }
       }
 
-      if (messageIndex === -1) {
+      // If we still don't have messages, show an error
+      if (messagesForBranch.length === 0) {
         console.error("Could not find message in thread");
-        toast.error("Could not create branch");
+        toast.error("Could not create branch - message not found");
         setIsBranching(false);
         return;
       }
 
-      console.log("Found message at index:", messageIndex);
-
-      // Get messages up to this point
-      const messagesForBranch = allMessages.slice(0, messageIndex + 1);
+      // Log the messages that will be included in the branch
+      console.log(
+        "Messages to include in branch:",
+        messagesForBranch.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content:
+            m.content?.substring(0, 50) + (m.content?.length > 50 ? "..." : ""),
+        }))
+      );
 
       // Create a new thread as a branch
-      const parentThread = await dataService.getThread(threadId);
-      const branchTitle = parentThread
-        ? `${parentThread.title} (branch)`
-        : "New Branch";
+      let parentThreadTitle = "Chat";
+      try {
+        const threads = await dataService.getThreads();
+        const parentThread = threads.find((t: any) => t.id === threadId);
+        if (parentThread && parentThread.title) {
+          parentThreadTitle = parentThread.title;
+        }
+      } catch (threadError) {
+        console.warn("Could not fetch parent thread title:", threadError);
+        // Continue with default title
+      }
 
-      // Generate a new ID for the branch thread
-      const newThreadId = uuidv4();
+      // Use the parent title without adding "(branch)" suffix
+      const branchTitle = parentThreadTitle;
+      const newThreadId = uuidv4(); // Generate a UUID for the new thread
 
-      const newThread = await dataService.createThread({
-        id: newThreadId,
-        title: branchTitle,
-        parentThreadId: threadId,
-        branchedFromMessageId: message.id,
-      });
+      // Create the new thread with the required ID parameter and set isBranch flag
+      try {
+        // Create the thread with basic info and set isBranch flag
+        await dataService.createThread(newThreadId, branchTitle, true);
+        console.log("New thread created with ID:", newThreadId);
 
-      if (!newThread) {
-        throw new Error("Failed to create new thread");
+        // Store branch metadata using our new method
+        await dataService.updateThreadMetadata(newThreadId, {
+          isBranch: true,
+          parentThreadId: threadId,
+          branchedFromMessageId: message.id,
+        });
+      } catch (threadError) {
+        console.error("Failed to create thread:", threadError);
+        toast.error("Could not create branch - thread creation failed");
+        setIsBranching(false);
+        return;
       }
 
       // Copy messages to the new thread
-      for (const msg of messagesForBranch) {
-        await dataService.createMessage(newThread.id, {
-          id: msg.id,
-          content: msg.content,
-          role: msg.role,
-          createdAt: msg.createdAt,
-          parts: msg.parts || [],
-          sources: msg.sources,
-          reasoning: msg.reasoning,
-        });
-      }
+      let messagesCopied = 0;
+      try {
+        for (const msg of messagesForBranch) {
+          try {
+            // Create a message with required parts property
+            const messageId = uuidv4(); // Generate a new ID for each message
+            await dataService.createMessage(newThreadId, {
+              id: messageId,
+              content: msg.content || "",
+              role: msg.role || "user",
+              createdAt: msg.createdAt || new Date(),
+              parts: [{ type: "text", text: msg.content || "" }],
+            });
+            messagesCopied++;
+          } catch (msgError) {
+            console.error("Error copying message:", msgError);
+            // Continue with other messages
+          }
+        }
 
-      // Navigate to the new thread
-      toast.success("Created new branch");
-      navigate(`/chat/${newThread.id}`);
+        if (messagesCopied === 0) {
+          throw new Error("No messages were copied to the new thread");
+        }
+
+        // Navigate to the new thread
+        toast.success(`Created new branch with ${messagesCopied} messages`);
+        navigate(`/chat/${newThreadId}`);
+      } catch (error) {
+        console.error("Error copying messages:", error);
+        toast.error("Failed to copy messages to branch");
+        setIsBranching(false);
+      }
     } catch (error) {
       console.error("Error creating branch:", error);
       toast.error("Failed to create branch");
@@ -235,9 +315,11 @@ export default function MessageControls({
             disabled={isBranching}
             title="Create a new branch from this point"
           >
-            <GitBranch
-              className={cn("w-4 h-4", { "animate-spin": isBranching })}
-            />
+            {isBranching ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <GitBranch className="w-4 h-4" />
+            )}
           </Button>
         </>
       )}

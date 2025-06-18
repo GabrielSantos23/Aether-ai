@@ -96,71 +96,16 @@ export class DataServiceClient {
     }
   }
 
-  // Get a thread by ID
-  async getThread(id: string) {
-    try {
-      // Check auth status before proceeding
-      const { isAuthenticated } = await this.checkAuthStatus();
-
-      if (isAuthenticated) {
-        // Use server-side API for authenticated users
-        const response = await fetch(`/api/threads/${id}`);
-
-        if (!response.ok) {
-          throw new Error("Failed to fetch thread from server");
-        }
-
-        const thread = await response.json();
-        return thread;
-      } else {
-        // Use IndexedDB via Dexie for local storage
-        const { db } = await import("../frontend/dexie/db");
-        return await db.threads.get(id);
-      }
-    } catch (error) {
-      console.error("Error getting thread:", error);
-      // Fallback to local storage if server request fails
-      try {
-        const { db } = await import("../frontend/dexie/db");
-        return await db.threads.get(id);
-      } catch (fallbackError) {
-        console.error("Fallback error:", fallbackError);
-        return null;
-      }
-    }
-  }
-
   // Create a new thread
   async createThread(
-    threadData:
-      | string
-      | {
-          id?: string;
-          title?: string;
-          parentThreadId?: string;
-          branchedFromMessageId?: string;
-        }
+    id: string,
+    title: string = "New Chat",
+    isBranch: boolean = false
   ) {
-    // Handle the old string argument pattern for backward compatibility
-    let id: string;
-    let title: string = "New Chat";
-    let parentThreadId: string | undefined;
-    let branchedFromMessageId: string | undefined;
-
-    if (typeof threadData === "string") {
-      id = threadData;
-    } else {
-      id = threadData.id || uuidv4();
-      title = threadData.title || "New Chat";
-      parentThreadId = threadData.parentThreadId;
-      branchedFromMessageId = threadData.branchedFromMessageId;
-    }
-
     console.log("DataServiceClient.createThread called:", {
       id,
       title,
-      parentThreadId,
-      branchedFromMessageId,
+      isBranch,
       isAuthenticated: this._isAuthenticated,
     });
 
@@ -174,11 +119,10 @@ export class DataServiceClient {
     const newThread = {
       id,
       title,
-      parentThreadId,
-      branchedFromMessageId,
       createdAt: new Date(),
       updatedAt: new Date(),
       lastMessageAt: new Date(),
+      isBranch,
     };
 
     try {
@@ -193,9 +137,8 @@ export class DataServiceClient {
           body: JSON.stringify({
             id,
             title,
-            userId,
-            parentThreadId,
-            branchedFromMessageId,
+            userId: userId,
+            isBranch,
           }),
         });
 
@@ -216,8 +159,6 @@ export class DataServiceClient {
         // Emit thread created event
         threadEvents.emit(THREAD_CREATED, newThread);
       }
-
-      return newThread;
     } catch (error) {
       console.error("Error creating thread:", error);
       // Fallback to local storage if server request fails
@@ -226,20 +167,23 @@ export class DataServiceClient {
         await db.threads.add(newThread);
         // Even in fallback case, emit the event
         threadEvents.emit(THREAD_CREATED, newThread);
-        return newThread;
       } catch (fallbackError) {
         console.error("Fallback error:", fallbackError);
-        return newThread;
       }
     }
   }
 
-  // Update thread title
-  async updateThread(id: string, title?: string) {
+  // Update thread title and metadata
+  async updateThread(
+    id: string,
+    options: { title?: string; isBranch?: boolean }
+  ) {
     // Import the threadEvents here to avoid circular dependencies
     const { threadEvents, THREAD_UPDATED } = await import(
       "../frontend/lib/events"
     );
+
+    const { title, isBranch } = options;
 
     try {
       // Check auth status before proceeding
@@ -252,7 +196,7 @@ export class DataServiceClient {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ title }),
+          body: JSON.stringify({ title, isBranch }),
         });
 
         if (!response.ok) {
@@ -260,17 +204,18 @@ export class DataServiceClient {
         }
 
         // Emit thread updated event
-        threadEvents.emit(THREAD_UPDATED, { id, title });
+        threadEvents.emit(THREAD_UPDATED, { id, title, isBranch });
       } else {
         // Use IndexedDB via Dexie for local storage
         const { db } = await import("../frontend/dexie/db");
         await db.threads.update(id, {
           ...(title && { title }),
+          ...(isBranch !== undefined && { isBranch }),
           updatedAt: new Date(),
         });
 
         // Emit thread updated event
-        threadEvents.emit(THREAD_UPDATED, { id, title });
+        threadEvents.emit(THREAD_UPDATED, { id, title, isBranch });
       }
     } catch (error) {
       console.error("Error updating thread:", error);
@@ -279,11 +224,12 @@ export class DataServiceClient {
         const { db } = await import("../frontend/dexie/db");
         await db.threads.update(id, {
           ...(title && { title }),
+          ...(isBranch !== undefined && { isBranch }),
           updatedAt: new Date(),
         });
 
         // Emit thread updated event even in fallback case
-        threadEvents.emit(THREAD_UPDATED, { id, title });
+        threadEvents.emit(THREAD_UPDATED, { id, title, isBranch });
       } catch (fallbackError) {
         console.error("Fallback error:", fallbackError);
       }
@@ -962,6 +908,85 @@ export class DataServiceClient {
       } catch (fallbackError) {
         console.error("Fallback error:", fallbackError);
       }
+    }
+  }
+
+  // Update thread metadata
+  async updateThreadMetadata(id: string, metadata: any) {
+    try {
+      // Check auth status before proceeding
+      const { isAuthenticated } = await this.checkAuthStatus();
+      const { threadEvents, THREAD_UPDATED } = await import(
+        "../frontend/lib/events"
+      );
+
+      // Create a branch record
+      if (metadata.isBranch && metadata.parentThreadId) {
+        // Always update local storage first
+        const { db } = await import("../frontend/dexie/db");
+
+        // Update the thread to mark it as a branch
+        const thread = await db.threads.get(id);
+        if (thread) {
+          await db.threads.update(id, {
+            ...thread,
+            isBranch: true,
+            updatedAt: new Date(),
+          });
+        }
+
+        // Create a branch record in the threadBranches table
+        await db.threadBranches.add({
+          id: crypto.randomUUID(),
+          threadId: id,
+          parentThreadId: metadata.parentThreadId,
+          branchedFromMessageId: metadata.branchedFromMessageId || null,
+          createdAt: new Date(),
+        });
+
+        if (isAuthenticated) {
+          // Use server-side API for authenticated users
+          try {
+            // Update the thread to mark it as a branch
+            await fetch(`/api/threads/${id}`, {
+              method: "PATCH",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                isBranch: true,
+              }),
+            });
+
+            // Create the branch record
+            const response = await fetch(`/api/threads/${id}/branch`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                parentThreadId: metadata.parentThreadId,
+                branchedFromMessageId: metadata.branchedFromMessageId,
+              }),
+            });
+
+            if (!response.ok) {
+              console.warn("Failed to update thread branch metadata on server");
+              // Continue with local update even if server fails
+            }
+          } catch (error) {
+            console.error("Error updating branch metadata on server:", error);
+          }
+        }
+
+        // Emit thread updated event with isBranch flag
+        threadEvents.emit(THREAD_UPDATED, { id, isBranch: true });
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Error updating thread metadata:", error);
+      return false;
     }
   }
 }

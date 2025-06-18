@@ -7,8 +7,15 @@ interface Thread {
   createdAt: Date;
   updatedAt: Date;
   lastMessageAt: Date;
-  parentThreadId?: string;
-  branchedFromMessageId?: string;
+  isBranch?: boolean;
+}
+
+interface ThreadBranch {
+  id: string;
+  threadId: string;
+  parentThreadId: string;
+  branchedFromMessageId: string;
+  createdAt: Date;
 }
 
 // Define a type for search sources
@@ -40,16 +47,19 @@ interface MessageSummary {
 
 const db = new Dexie("aether-ai") as Dexie & {
   threads: EntityTable<Thread, "id">;
+  threadBranches: EntityTable<ThreadBranch, "id">;
   messages: EntityTable<DBMessage, "id">;
   messageSummaries: EntityTable<MessageSummary, "id">;
 };
 
-// Update the database version to include sources and reasoning
-db.version(3).stores({
+// Update the database version to include thread branches
+db.version(4).stores({
   threads: "id, title, updatedAt, lastMessageAt",
+  threadBranches:
+    "id, threadId, parentThreadId, createdAt, [threadId+createdAt]",
   messages: "id, threadId, createdAt, [threadId+createdAt]",
   messageSummaries: "id, threadId, messageId, createdAt, [threadId+createdAt]",
 });
 
-export type { Thread, DBMessage };
+export type { Thread, ThreadBranch, DBMessage };
 export { db };

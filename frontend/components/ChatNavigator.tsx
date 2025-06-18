@@ -42,17 +42,14 @@ function PureChatNavigator({
     const fetchSummaries = async () => {
       try {
         setIsLoading(true);
-        console.log("Fetching message summaries for thread:", threadId);
 
         const summaries = await dataService.getMessageSummaries(threadId);
-        console.log("Fetched summaries:", summaries);
         setMessageSummaries(summaries);
       } catch (error) {
         console.error("Error fetching message summaries:", error);
 
         // Fall back to local summaries if available
         if (localSummaries && localSummaries.length > 0) {
-          console.log("Using local summaries as fallback:", localSummaries);
           setMessageSummaries(localSummaries);
         }
       } finally {

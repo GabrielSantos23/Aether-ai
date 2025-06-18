@@ -14,7 +14,7 @@ import {
 import { Button, buttonVariants } from "../../../components/ui/button";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Link, useNavigate, useParams } from "react-router";
-import { X, Trash2, Loader2, LogIn } from "lucide-react";
+import { X, Trash2, Loader2, LogIn, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ComponentProps, memo, useEffect, useState, useCallback } from "react";
 import { siteConfig } from "@/app/config/site.config";
@@ -39,6 +39,7 @@ import { toast } from "sonner";
 import { useSettingsModal } from "@/frontend/contexts/SettingsModalContext";
 import { useUser } from "@/hooks/useUser";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { db } from "@/frontend/dexie/db";
 
 export default function ChatSidebar(props: ComponentProps<typeof Sidebar>) {
   const { id } = useParams();
@@ -70,6 +71,16 @@ export default function ChatSidebar(props: ComponentProps<typeof Sidebar>) {
       fetchThreads();
     }
   }, [fetchThreads, isAuthLoading]);
+
+  // Use live query to get branch information
+  const branchInfo = useLiveQuery(async () => {
+    const branches = await db.threadBranches.toArray();
+    // Create a map of threadId -> true for quick lookup
+    return branches.reduce((acc, branch) => {
+      acc[branch.threadId] = true;
+      return acc;
+    }, {} as Record<string, boolean>);
+  }, []);
 
   // Listen for thread events
   useEffect(() => {
@@ -196,16 +207,15 @@ export default function ChatSidebar(props: ComponentProps<typeof Sidebar>) {
                               navigate(`/chat/${thread.id}`);
                             }}
                           >
-                            <span className="truncate block">
+                            <span className="truncate block flex items-center">
+                              {(thread.isBranch ||
+                                (branchInfo && branchInfo[thread.id])) && (
+                                <GitBranch className="w-3 h-3 mr-1 text-muted-foreground" />
+                              )}
                               {thread.title}
                               {thread.isShared && (
                                 <span className="ml-1 text-xs text-blue-500 dark:text-blue-400 inline-flex items-center">
                                   (shared)
-                                </span>
-                              )}
-                              {thread.parentThreadId && (
-                                <span className="ml-1 text-xs text-emerald-500 dark:text-emerald-400 inline-flex items-center">
-                                  (branch)
                                 </span>
                               )}
                             </span>

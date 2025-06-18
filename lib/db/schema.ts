@@ -19,6 +19,7 @@ export const threads = pgTable("threads", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   lastMessageAt: timestamp("last_message_at").notNull().defaultNow(),
   isPublic: boolean("is_public").default(false),
+  isBranch: boolean("is_branch").default(false), // Flag to indicate if this thread is a branch
 });
 
 // Shared threads table schema for specific user access

@@ -16,6 +16,10 @@ import {
   BrainCircuit,
   Image as ImageIcon,
   Loader2,
+  FileUp,
+  Code,
+  Music,
+  Video,
 } from "lucide-react";
 import { useChatNavigator } from "@/frontend/hooks/useChatNavigator";
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -88,8 +92,8 @@ export default function Chat({
   const modelConfig = useModelStore((state) => state.getModelConfig());
   const { dataService, isAuthenticated } = useDataService();
 
-  // Check if the selected model supports tools
-  const supportsTools = modelConfig.supportsTools;
+  // Check if the selected model supports function calling
+  const supportsFunctionCalling = modelConfig.supportsFunctionCalling;
 
   // Track active tools
   const [activeTools, setActiveTools] = useState({
@@ -97,6 +101,10 @@ export default function Chat({
     imageAnalysis: false,
     thinking: false,
     imageGeneration: false,
+    fileUpload: false,
+    codeExecution: false,
+    audioGeneration: false,
+    videoGeneration: false,
   });
 
   // Store search sources
@@ -235,6 +243,10 @@ export default function Chat({
     if (activeTools.thinking) enabledTools.push("thinking");
     if (activeTools.imageAnalysis) enabledTools.push("analyzeImage");
     if (activeTools.imageGeneration) enabledTools.push("imageGeneration");
+    if (activeTools.fileUpload) enabledTools.push("fileUpload");
+    if (activeTools.codeExecution) enabledTools.push("codeExecution");
+    if (activeTools.audioGeneration) enabledTools.push("audioGeneration");
+    if (activeTools.videoGeneration) enabledTools.push("videoGeneration");
 
     if (enabledTools.length > 0) {
       body.enabledTools = enabledTools;
@@ -878,44 +890,67 @@ export default function Chat({
 
   // Toggle tool activation
   const toggleTool = (
-    tool: "webSearch" | "imageAnalysis" | "thinking" | "imageGeneration"
+    tool:
+      | "webSearch"
+      | "imageAnalysis"
+      | "thinking"
+      | "imageGeneration"
+      | "fileUpload"
+      | "codeExecution"
+      | "audioGeneration"
+      | "videoGeneration"
   ) => {
     // Check if the model supports the specific tool
-    if (tool === "imageGeneration") {
-      if (modelConfig.supportsImageGeneration) {
-        setActiveTools((prev) => ({
-          ...prev,
-          [tool]: !prev[tool],
-        }));
-      } else {
-        // Show a toast warning if the model doesn't support image generation
-        toast.warning(
-          `${selectedModel} doesn't support image generation capabilities.`,
-          {
-            description:
-              "Try switching to a model like Gemini 2.5 Pro that supports image generation.",
-          }
-        );
-      }
-    } else if (supportsTools) {
-      // For other tools, check if the model supports tools in general
+    let isSupported = false;
+    let toolName = "";
+
+    switch (tool) {
+      case "webSearch":
+        isSupported = !!modelConfig.supportsWebSearch;
+        toolName = "web search";
+        break;
+      case "imageAnalysis":
+        isSupported = !!modelConfig.supportsVision;
+        toolName = "image analysis";
+        break;
+      case "thinking":
+        isSupported = !!modelConfig.supportsThinking;
+        toolName = "thinking";
+        break;
+      case "imageGeneration":
+        isSupported = !!modelConfig.supportsImageGeneration;
+        toolName = "image generation";
+        break;
+      case "fileUpload":
+        isSupported = !!modelConfig.supportsFileUpload;
+        toolName = "file upload";
+        break;
+      case "codeExecution":
+        isSupported = !!modelConfig.supportsCodeExecution;
+        toolName = "code execution";
+        break;
+      case "audioGeneration":
+        isSupported = !!modelConfig.supportsAudioGeneration;
+        toolName = "audio generation";
+        break;
+      case "videoGeneration":
+        isSupported = !!modelConfig.supportsVideoGeneration;
+        toolName = "video generation";
+        break;
+    }
+
+    if (isSupported) {
       setActiveTools((prev) => ({
         ...prev,
         [tool]: !prev[tool],
       }));
     } else {
-      // Show a toast warning if the model doesn't support tools
+      // Show a toast warning if the model doesn't support the tool
       toast.warning(
-        `${selectedModel} doesn't support ${
-          tool === "webSearch"
-            ? "web search"
-            : tool === "imageAnalysis"
-            ? "image analysis"
-            : "thinking"
-        } capabilities.`,
+        `${selectedModel} doesn't support ${toolName} capabilities.`,
         {
           description:
-            "Try switching to a model like GPT-4o or Gemini 2.5 Pro that supports tools.",
+            "Try switching to a model that supports this capability.",
         }
       );
     }
@@ -1043,7 +1078,7 @@ export default function Chat({
           : "Enable web search"
           }
           title="Web Search"
-          disabled={!supportsTools}
+          disabled={!supportsFunctionCalling}
           >
           <Search className="h-5 w-5" />
           {activeTools.webSearch && (
@@ -1052,7 +1087,7 @@ export default function Chat({
             </Button>
             </div>
             </TooltipTrigger>
-            {!supportsTools && (
+            {!supportsFunctionCalling && (
               <TooltipContent>
               <p>Web search not supported by {selectedModel}</p>
               </TooltipContent>
@@ -1075,7 +1110,7 @@ export default function Chat({
                 : "Enable image analysis"
                 }
                 title="Image Analysis"
-                disabled={!supportsTools}
+                disabled={!supportsFunctionCalling}
                 >
                 <ImageIcon className="h-5 w-5" />
                 {activeTools.imageAnalysis && (
@@ -1084,7 +1119,7 @@ export default function Chat({
                   </Button>
                   </div>
                   </TooltipTrigger>
-                  {!supportsTools && (
+                  {!supportsFunctionCalling && (
                     <TooltipContent>
                     <p>Image analysis not supported by {selectedModel}</p>
                     </TooltipContent>
@@ -1107,7 +1142,7 @@ export default function Chat({
                       : "Enable thinking"
                       }
                       title="Step-by-step Thinking"
-                      disabled={!supportsTools}
+                      disabled={!supportsFunctionCalling}
                       >
                       <BrainCircuit className="h-5 w-5" />
                       {activeTools.thinking && (
@@ -1116,7 +1151,7 @@ export default function Chat({
                         </Button>
                         </div>
                         </TooltipTrigger>
-                        {!supportsTools && (
+                        {!supportsFunctionCalling && (
                           <TooltipContent>
                           <p>Thinking tool not supported by {selectedModel}</p>
                           </TooltipContent>

@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get thread data from request body
-    const { id, title } = await request.json();
+    const { id, title, isBranch = false } = await request.json();
 
     // Create the thread
     await db.insert(threads).values({
@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
       createdAt: new Date(),
       updatedAt: new Date(),
       lastMessageAt: new Date(),
+      isBranch,
     });
 
     return NextResponse.json({ success: true });

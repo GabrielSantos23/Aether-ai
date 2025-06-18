@@ -51,13 +51,14 @@ export async function PATCH(
     }
 
     // Get thread data from request body
-    const { title } = await request.json();
+    const { title, isBranch } = await request.json();
 
     // Update the thread
     await db
       .update(threads)
       .set({
         ...(title && { title }),
+        ...(isBranch !== undefined && { isBranch }),
         updatedAt: new Date(),
       })
       .where(

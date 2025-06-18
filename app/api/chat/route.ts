@@ -1,6 +1,8 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createDeepSeek } from "@ai-sdk/deepseek";
 import { streamText, smoothStream } from "ai";
 import { headers } from "next/headers";
 import { getModelConfig, AIModel } from "@/lib/models";
@@ -118,6 +120,16 @@ export async function POST(req: NextRequest) {
         aiModel = openrouter(modelConfig.modelId, {});
         break;
 
+      case "anthropic":
+        const anthropic = createAnthropic({ apiKey });
+        aiModel = anthropic(modelConfig.modelId);
+        break;
+
+      case "deepseek":
+        const deepseek = createDeepSeek({ apiKey });
+        aiModel = deepseek(modelConfig.modelId);
+        break;
+
       default:
         return new Response(
           JSON.stringify({ error: "Unsupported model provider" }),
@@ -173,7 +185,6 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error) {
-    console.log("error", error);
     return new NextResponse(
       JSON.stringify({ error: "Internal Server Error" }),
       {
