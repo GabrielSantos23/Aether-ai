@@ -7,10 +7,10 @@ import { eq } from "drizzle-orm";
 // PUT /api/messages/[id]/reasoning - Update reasoning for a message
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
   try {
-    const messageId = await Promise.resolve(params.id);
+    const messageId = context.params.id;
 
     // Get the current user from the session
     const session = await auth.api.getSession(request);
@@ -65,7 +65,7 @@ export async function PUT(
       const safeReasoning = reasoning ? String(reasoning) : "";
 
       // Update reasoning directly in the messages table
-      const updateResult = await db
+      await db
         .update(messages)
         .set({
           reasoning: safeReasoning,
@@ -73,7 +73,7 @@ export async function PUT(
         .where(eq(messages.id, messageId));
 
       // Verify the update worked
-      const verifyResult = await db
+      await db
         .select({ reasoning: messages.reasoning })
         .from(messages)
         .where(eq(messages.id, messageId));

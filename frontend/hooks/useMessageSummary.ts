@@ -29,7 +29,7 @@ export const useMessageSummary = () => {
           const { title, isTitle, messageId, threadId } = payload;
 
           if (isTitle) {
-            await dataService.updateThread(threadId, title);
+            await dataService.updateThread(threadId, { title });
             await dataService.createMessageSummary(threadId, messageId, title);
           } else {
             await dataService.createMessageSummary(threadId, messageId, title);

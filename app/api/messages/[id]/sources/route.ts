@@ -10,7 +10,7 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const messageId = await Promise.resolve(params.id);
+    const messageId = params.id;
     console.log("Sources API called for message ID:", messageId);
 
     // Get the current user from the session
@@ -68,7 +68,7 @@ export async function PUT(
       const sourcesJson = sources.length > 0 ? JSON.stringify(sources) : null;
 
       // Update sources directly in the messages table
-      const updateResult = await db
+      await db
         .update(messages)
         .set({
           sources: sourcesJson,
@@ -76,7 +76,7 @@ export async function PUT(
         .where(eq(messages.id, messageId));
 
       // Verify the update worked
-      const verifyResult = await db
+      await db
         .select({ sources: messages.sources })
         .from(messages)
         .where(eq(messages.id, messageId));

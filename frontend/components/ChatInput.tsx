@@ -344,11 +344,7 @@ function PureChatInput({
   };
 
   return (
-    <div
-      className={`fixed w-full max-w-3xl ${!id ? "bottom-2/4 " : "bottom-0 "}`}
-    >
-      {!id && <ChatTitle />}
-
+    <div className={`fixed w-full max-w-3xl bottom-4`}>
       <div className="bg-card relative rounded-lg p-2 pb-0 w-full">
         {!id && <ShineBorder shineColor={["#A07CFE", "#FE8FB5", "#FFBE7B"]} />}
         <div className="relative">

@@ -911,81 +911,82 @@ export class DataServiceClient {
     }
   }
 
-  // Update thread metadata
-  async updateThreadMetadata(id: string, metadata: any) {
+  // Add a method to update thread metadata
+  async updateThreadMetadata(id: string, metadata: Record<string, unknown>) {
+    console.log("DataServiceClient.updateThreadMetadata called:", {
+      id,
+      metadata,
+    });
+
     try {
       // Check auth status before proceeding
       const { isAuthenticated } = await this.checkAuthStatus();
-      const { threadEvents, THREAD_UPDATED } = await import(
-        "../frontend/lib/events"
-      );
 
-      // Create a branch record
-      if (metadata.isBranch && metadata.parentThreadId) {
-        // Always update local storage first
-        const { db } = await import("../frontend/dexie/db");
-
-        // Update the thread to mark it as a branch
-        const thread = await db.threads.get(id);
-        if (thread) {
-          await db.threads.update(id, {
-            ...thread,
-            isBranch: true,
-            updatedAt: new Date(),
-          });
-        }
-
-        // Create a branch record in the threadBranches table
-        await db.threadBranches.add({
-          id: crypto.randomUUID(),
-          threadId: id,
-          parentThreadId: metadata.parentThreadId,
-          branchedFromMessageId: metadata.branchedFromMessageId || null,
-          createdAt: new Date(),
+      if (isAuthenticated) {
+        // Use server-side API for authenticated users
+        const response = await fetch(`/api/threads/${id}/metadata`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ metadata }),
         });
 
-        if (isAuthenticated) {
-          // Use server-side API for authenticated users
-          try {
-            // Update the thread to mark it as a branch
-            await fetch(`/api/threads/${id}`, {
-              method: "PATCH",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                isBranch: true,
-              }),
-            });
-
-            // Create the branch record
-            const response = await fetch(`/api/threads/${id}/branch`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                parentThreadId: metadata.parentThreadId,
-                branchedFromMessageId: metadata.branchedFromMessageId,
-              }),
-            });
-
-            if (!response.ok) {
-              console.warn("Failed to update thread branch metadata on server");
-              // Continue with local update even if server fails
-            }
-          } catch (error) {
-            console.error("Error updating branch metadata on server:", error);
-          }
+        if (!response.ok) {
+          throw new Error("Failed to update thread metadata on server");
         }
+      } else {
+        // Use IndexedDB via Dexie for local storage
+        const { db } = await import("../frontend/dexie/db");
+        // Since metadata is not part of the Thread interface, we need to store it differently
+        // For now, just update the updatedAt timestamp
+        await db.threads.update(id, {
+          updatedAt: new Date(),
+        });
 
-        // Emit thread updated event with isBranch flag
-        threadEvents.emit(THREAD_UPDATED, { id, isBranch: true });
+        // Store metadata in localStorage as a workaround
+        try {
+          const key = `thread_metadata_${id}`;
+          localStorage.setItem(key, JSON.stringify(metadata));
+        } catch (err) {
+          console.error("Failed to store metadata in localStorage:", err);
+        }
       }
-
-      return true;
     } catch (error) {
       console.error("Error updating thread metadata:", error);
+    }
+  }
+
+  // Add a method to migrate local data to Supabase
+  async migrateLocalDataToSupabase() {
+    console.log("DataServiceClient.migrateLocalDataToSupabase called");
+
+    try {
+      // Check auth status before proceeding
+      const { isAuthenticated, userId } = await this.checkAuthStatus();
+
+      if (!isAuthenticated || !userId) {
+        console.error("Cannot migrate data: User not authenticated");
+        return false;
+      }
+
+      // Call the server-side API to perform the migration
+      const response = await fetch("/api/threads/migrate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        console.error("Migration API error:", await response.text());
+        return false;
+      }
+
+      console.log("Migration completed successfully");
+      return true;
+    } catch (error) {
+      console.error("Error during migration:", error);
       return false;
     }
   }

@@ -1,16 +1,9 @@
 import { UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
-import { db, InsertMessage, InsertMessageSource, InsertThread } from "./db";
+import { db } from "./db";
 import { authClient } from "./auth-client";
-import { supabase } from "./supabase";
 import { eq, and } from "drizzle-orm";
-import {
-  messages,
-  messageSources,
-  messageSummaries,
-  threads,
-  messageReasonings,
-} from "./db/schema";
+import { messages, messageSummaries, threads } from "./db/schema";
 import { toast } from "sonner";
 
 // Type for search sources
@@ -115,21 +108,30 @@ export class DataService {
   }
 
   // Update thread title
-  async updateThread(id: string, title: string) {
+  async updateThread(
+    id: string,
+    options: { title?: string; isBranch?: boolean }
+  ) {
     try {
       const isAuth = await this.isAuthenticated();
+      const { title, isBranch } = options;
 
       if (isAuth) {
         // Update thread in Supabase
         await db
           .update(threads)
-          .set({ title, updatedAt: new Date() })
+          .set({
+            ...(title && { title }),
+            ...(isBranch !== undefined && { isBranch }),
+            updatedAt: new Date(),
+          })
           .where(eq(threads.id, id));
       } else {
         // Use IndexedDB via Dexie for local storage
         const { db } = await import("../frontend/dexie/db");
         await db.threads.update(id, {
-          title,
+          ...(title && { title }),
+          ...(isBranch !== undefined && { isBranch }),
           updatedAt: new Date(),
         });
       }
@@ -287,8 +289,7 @@ export class DataService {
           : null;
 
         // Create message in Supabase with sources and reasoning
-
-        const insertResult = await db.insert(messages).values({
+        await db.insert(messages).values({
           id: message.id,
           threadId,
           userId,
@@ -300,7 +301,7 @@ export class DataService {
         });
 
         // Verify the message was created with sources and reasoning
-        const verifyResult = await db
+        await db
           .select({
             id: messages.id,
             sources: messages.sources,
@@ -386,7 +387,7 @@ export class DataService {
           .where(eq(messages.id, messageId));
 
         // Verify the update
-        const updatedMessage = await db
+        await db
           .select({ sources: messages.sources })
           .from(messages)
           .where(eq(messages.id, messageId));
@@ -559,7 +560,7 @@ export class DataService {
           .where(eq(messages.id, messageId));
 
         // Verify the update
-        const updatedMessage = await db
+        await db
           .select({ reasoning: messages.reasoning })
           .from(messages)
           .where(eq(messages.id, messageId));
@@ -576,12 +577,16 @@ export class DataService {
   // Migrate data from local storage to Supabase
   async migrateLocalDataToSupabase() {
     try {
+      console.log("Starting migration of local data to Supabase");
+
       const isAuth = await this.isAuthenticated();
       const userId = await this.getCurrentUserId();
 
+      console.log("Authentication check:", { isAuth, userId });
+
       if (!isAuth || !userId) {
         console.log("Cannot migrate data: User not authenticated");
-        return;
+        return false;
       }
 
       // Import local DB
@@ -589,9 +594,17 @@ export class DataService {
 
       // Get all local threads
       const localThreads = await localDb.threads.toArray();
+      console.log(`Found ${localThreads.length} local threads to migrate`);
+
+      if (localThreads.length === 0) {
+        console.log("No local threads to migrate");
+        return true; // Nothing to migrate is still a success
+      }
 
       // For each thread, migrate it and its messages
       for (const thread of localThreads) {
+        console.log(`Processing thread: ${thread.id} - ${thread.title}`);
+
         // Check if thread already exists in Supabase
         const existingThreads = await db
           .select()
@@ -599,6 +612,10 @@ export class DataService {
           .where(eq(threads.id, thread.id));
 
         if (existingThreads.length === 0) {
+          console.log(
+            `Thread ${thread.id} does not exist in Supabase, creating it`
+          );
+
           // Create thread in Supabase
           await db.insert(threads).values({
             id: thread.id,
@@ -607,6 +624,7 @@ export class DataService {
             createdAt: thread.createdAt,
             updatedAt: thread.updatedAt,
             lastMessageAt: thread.lastMessageAt,
+            isBranch: thread.isBranch || false,
           });
 
           // Get all messages for this thread
@@ -615,8 +633,14 @@ export class DataService {
             .equals(thread.id)
             .toArray();
 
+          console.log(
+            `Found ${localMessages.length} messages for thread ${thread.id}`
+          );
+
           // Migrate each message
           for (const message of localMessages) {
+            console.log(`Processing message: ${message.id}`);
+
             // Check if message already exists
             const existingMessages = await db
               .select()
@@ -624,6 +648,27 @@ export class DataService {
               .where(eq(messages.id, message.id));
 
             if (existingMessages.length === 0) {
+              console.log(
+                `Message ${message.id} does not exist in Supabase, creating it`
+              );
+
+              // Prepare sources
+              let sourcesJson = null;
+              if (message.sources && message.sources.length > 0) {
+                try {
+                  console.log(
+                    `Message ${message.id} has ${message.sources.length} sources`
+                  );
+                  sourcesJson = JSON.stringify(message.sources);
+                } catch (e) {
+                  console.error(
+                    `Error stringifying sources for message ${message.id}:`,
+                    e
+                  );
+                  sourcesJson = "[]";
+                }
+              }
+
               // Insert message
               await db.insert(messages).values({
                 id: message.id,
@@ -632,21 +677,15 @@ export class DataService {
                 content: message.content,
                 role: message.role,
                 createdAt: message.createdAt,
+                sources: sourcesJson,
+                reasoning: message.reasoning || null,
               });
 
-              // Migrate sources if any
-              if (message.sources && message.sources.length > 0) {
-                const messageSourcesToAdd = message.sources.map((source) => ({
-                  id: uuidv4(),
-                  messageId: message.id,
-                  title: source.title || null,
-                  url: source.url,
-                  snippet: source.snippet || null,
-                  createdAt: new Date(),
-                }));
-
-                await db.insert(messageSources).values(messageSourcesToAdd);
-              }
+              console.log(`Message ${message.id} created successfully`);
+            } else {
+              console.log(
+                `Message ${message.id} already exists in Supabase, skipping`
+              );
             }
           }
 
@@ -656,21 +695,46 @@ export class DataService {
             .equals(thread.id)
             .toArray();
 
+          console.log(
+            `Found ${localSummaries.length} summaries for thread ${thread.id}`
+          );
+
           for (const summary of localSummaries) {
-            await db.insert(messageSummaries).values({
-              id: summary.id,
-              threadId: summary.threadId,
-              messageId: summary.messageId,
-              content: summary.content,
-              createdAt: summary.createdAt,
-            });
+            console.log(`Processing summary: ${summary.id}`);
+
+            // Check if summary already exists
+            const existingSummaries = await db
+              .select()
+              .from(messageSummaries)
+              .where(eq(messageSummaries.id, summary.id));
+
+            if (existingSummaries.length === 0) {
+              await db.insert(messageSummaries).values({
+                id: summary.id,
+                threadId: summary.threadId,
+                messageId: summary.messageId,
+                content: summary.content,
+                createdAt: summary.createdAt,
+              });
+
+              console.log(`Summary ${summary.id} created successfully`);
+            } else {
+              console.log(
+                `Summary ${summary.id} already exists in Supabase, skipping`
+              );
+            }
           }
         } else {
+          console.log(
+            `Thread ${thread.id} already exists in Supabase, skipping`
+          );
         }
       }
 
+      console.log("Migration completed successfully");
       return true;
     } catch (error) {
+      console.error("Error migrating data:", error);
       return false;
     }
   }

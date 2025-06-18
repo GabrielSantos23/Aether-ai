@@ -69,6 +69,7 @@ function PureMessage({
   searchSources?: SearchSource[];
 }) {
   const [mode, setMode] = useState<"view" | "edit">("view");
+  const [reasoningRendered, setReasoningRendered] = useState(false);
 
   useEffect(() => {
     if (message.role === "assistant" && searchSources.length > 0) {
@@ -97,6 +98,12 @@ function PureMessage({
 
   // Extract reasoning content from message parts
   let reasoningContent = "";
+  let hasReasoningPart = false;
+
+  // Check if any message part has type "reasoning"
+  if (message.parts) {
+    hasReasoningPart = message.parts.some((part) => part.type === "reasoning");
+  }
 
   // Use a custom property instead of the deprecated reasoning property
   const customReasoning = (message as any)._reasoning;
@@ -214,10 +221,12 @@ function PureMessage({
         </div>
       )}
 
-      {/* Display reasoning first if it exists */}
-      {reasoningContent && message.role === "assistant" && (
-        <MessageReasoning reasoning={reasoningContent} id={message.id} />
-      )}
+      {/* Only display reasoning from extracted content if there's no dedicated reasoning part */}
+      {reasoningContent &&
+        message.role === "assistant" &&
+        !hasReasoningPart && (
+          <MessageReasoning reasoning={reasoningContent} id={message.id} />
+        )}
 
       {message.parts.map((part, index) => {
         const { type } = part;

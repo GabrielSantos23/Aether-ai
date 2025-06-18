@@ -9,7 +9,7 @@ function PureMessageReasoning({
   reasoning: string;
   id: string;
 }) {
-  const [isExpanded, setIsExpanded] = useState(true); // Default to expanded
+  const [isExpanded, setIsExpanded] = useState(true);
 
   console.log(
     `MessageReasoning component for ${id} - Received reasoning:`,

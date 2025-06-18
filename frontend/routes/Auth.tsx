@@ -1,9 +1,16 @@
 import { SignIn } from "@/components/auth/SignIn";
+import { useUser } from "@/hooks/useUser";
+import { Navigate } from "react-router";
 
 export default function Auth() {
+  const { isLoggedIn } = useUser();
+
+  if (isLoggedIn) {
+    return <Navigate to="/chat" />;
+  }
+
   return (
-    <div className="container mx-auto max-w-md py-12">
-      <h1 className="text-2xl font-bold mb-6 text-center">Sign In</h1>
+    <div className="flex  h-screen">
       <SignIn />
     </div>
   );

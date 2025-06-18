@@ -4,10 +4,11 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
-  const headersList = await headers();
+  const headersList = headers();
   const googleApiKey = headersList.get("X-Google-API-Key");
 
   if (!googleApiKey) {
+    console.error("Missing Google API key in request headers");
     return NextResponse.json(
       {
         error: "Google API key is required to enable chat title generation.",
@@ -16,13 +17,25 @@ export async function POST(req: Request) {
     );
   }
 
-  const google = createGoogleGenerativeAI({
-    apiKey: googleApiKey,
-  });
-
-  const { prompt, isTitle, messageId, threadId } = await req.json();
-
   try {
+    const { prompt, isTitle, messageId, threadId } = await req.json();
+
+    if (!prompt) {
+      console.error("Missing prompt in request body");
+      return NextResponse.json(
+        { error: "Prompt is required" },
+        { status: 400 }
+      );
+    }
+
+    console.log(
+      `Generating title for ${isTitle ? "thread" : "message"}: ${threadId}`
+    );
+
+    const google = createGoogleGenerativeAI({
+      apiKey: googleApiKey,
+    });
+
     const { text: title } = await generateText({
       model: google("gemini-2.5-flash-preview-04-17"),
       system: `\n
@@ -34,11 +47,22 @@ export async function POST(req: Request) {
       prompt,
     });
 
-    return NextResponse.json({ title, isTitle, messageId, threadId });
+    console.log(
+      `Generated title: "${title}" for ${
+        isTitle ? "thread" : "message"
+      }: ${threadId}`
+    );
+
+    return NextResponse.json({
+      title,
+      isTitle: isTitle || false,
+      messageId,
+      threadId,
+    });
   } catch (error) {
     console.error("Failed to generate title:", error);
     return NextResponse.json(
-      { error: "Failed to generate title" },
+      { error: "Failed to generate title", details: String(error) },
       { status: 500 }
     );
   }

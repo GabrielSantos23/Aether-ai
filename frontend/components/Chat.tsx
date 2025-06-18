@@ -35,6 +35,7 @@ import { SearchSource } from "@/lib/data-service";
 import { Message } from "@ai-sdk/ui-utils";
 import { useDataService } from "@/frontend/hooks/useDataService";
 import { ChatTitle } from "@/components/chattitle";
+import { useParams } from "react-router";
 
 // Extend UIMessage to include sources and reasoning
 interface ExtendedUIMessage extends UIMessage {
@@ -91,6 +92,7 @@ export default function Chat({
   const selectedModel = useModelStore((state) => state.selectedModel);
   const modelConfig = useModelStore((state) => state.getModelConfig());
   const { dataService, isAuthenticated } = useDataService();
+  const { id } = useParams();
 
   // Check if the selected model supports function calling
   const supportsFunctionCalling = modelConfig.supportsFunctionCalling;
@@ -1045,6 +1047,10 @@ export default function Chat({
             stop={stop}
             searchSources={searchSources}
           />
+          <div className="flex justify-center items-center fixed bottom-2/4 left-0 right-0 w-full">
+            {!id && <ChatTitle />}
+          </div>
+
           <ChatInput
             threadId={threadId}
             input={input}
