@@ -1,9 +1,7 @@
 import { UIMessage } from "ai";
 import { v4 as uuidv4 } from "uuid";
-import { db } from "./db";
+import { supabase } from "./db";
 import { authClient } from "./auth-client";
-import { eq, and } from "drizzle-orm";
-import { messages, messageSummaries, threads } from "./db/schema";
 import { toast } from "sonner";
 
 // Type for search sources
@@ -47,12 +45,13 @@ export class DataService {
 
       if (isAuth && userId) {
         // Get threads from Supabase
-        const result = await db
-          .select()
-          .from(threads)
-          .where(eq(threads.userId, userId))
-          .orderBy(threads.lastMessageAt);
+        const { data: result, error } = await supabase
+          .from("threads")
+          .select("*")
+          .eq("user_id", userId)
+          .order("last_message_at", { ascending: true });
 
+        if (error) throw error;
         return result.reverse();
       } else {
         // Use IndexedDB via Dexie for local storage
@@ -81,15 +80,17 @@ export class DataService {
 
       if (isAuth && userId) {
         // Create thread in Supabase
-        await db.insert(threads).values({
+        const { error } = await supabase.from("threads").insert({
           id,
           title,
-          userId,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          lastMessageAt: new Date(),
-          isBranch,
+          user_id: userId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          last_message_at: new Date().toISOString(),
+          is_branch: isBranch,
         });
+
+        if (error) throw error;
       } else {
         // Use IndexedDB via Dexie for local storage
         const { db } = await import("../frontend/dexie/db");
@@ -118,14 +119,16 @@ export class DataService {
 
       if (isAuth) {
         // Update thread in Supabase
-        await db
-          .update(threads)
-          .set({
-            ...(title && { title }),
-            ...(isBranch !== undefined && { isBranch }),
-            updatedAt: new Date(),
-          })
-          .where(eq(threads.id, id));
+        const updateData: any = { updated_at: new Date().toISOString() };
+        if (title) updateData.title = title;
+        if (isBranch !== undefined) updateData.is_branch = isBranch;
+
+        const { error } = await supabase
+          .from("threads")
+          .update(updateData)
+          .eq("id", id);
+
+        if (error) throw error;
       } else {
         // Use IndexedDB via Dexie for local storage
         const { db } = await import("../frontend/dexie/db");
@@ -147,7 +150,9 @@ export class DataService {
 
       if (isAuth) {
         // Delete thread in Supabase (cascade will delete messages)
-        await db.delete(threads).where(eq(threads.id, id));
+        const { error } = await supabase.from("threads").delete().eq("id", id);
+
+        if (error) throw error;
       } else {
         // Use IndexedDB via Dexie for local storage
         const { db } = await import("../frontend/dexie/db");
@@ -174,7 +179,12 @@ export class DataService {
 
       if (isAuth && userId) {
         // Delete all threads for this user in Supabase
-        await db.delete(threads).where(eq(threads.userId, userId));
+        const { error } = await supabase
+          .from("threads")
+          .delete()
+          .eq("user_id", userId);
+
+        if (error) throw error;
       } else {
         // Use IndexedDB via Dexie for local storage
         const { db } = await import("../frontend/dexie/db");
@@ -200,11 +210,13 @@ export class DataService {
 
       if (isAuth) {
         // Get messages from Supabase
-        const result = await db
-          .select()
-          .from(messages)
-          .where(eq(messages.threadId, threadId))
-          .orderBy(messages.createdAt);
+        const { data: result, error } = await supabase
+          .from("messages")
+          .select("*")
+          .eq("thread_id", threadId)
+          .order("created_at", { ascending: true });
+
+        if (error) throw error;
 
         // Process messages to ensure proper format
         const processedMessages = result.map((message) => {
@@ -230,6 +242,9 @@ export class DataService {
 
           return {
             ...message,
+            threadId: message.thread_id,
+            userId: message.user_id,
+            createdAt: new Date(message.created_at),
             sources,
             _reasoning: reasoning, // Add _reasoning field for client compatibility
           };
@@ -289,32 +304,39 @@ export class DataService {
           : null;
 
         // Create message in Supabase with sources and reasoning
-        await db.insert(messages).values({
+        const { error: insertError } = await supabase.from("messages").insert({
           id: message.id,
-          threadId,
-          userId,
+          thread_id: threadId,
+          user_id: userId,
           content: message.content,
           role: message.role,
-          createdAt: message.createdAt || new Date(),
+          created_at:
+            message.createdAt?.toISOString() || new Date().toISOString(),
           sources: sourcesJson,
           reasoning: safeReasoning,
         });
 
+        if (insertError) throw insertError;
+
         // Verify the message was created with sources and reasoning
-        await db
-          .select({
-            id: messages.id,
-            sources: messages.sources,
-            reasoning: messages.reasoning,
-          })
-          .from(messages)
-          .where(eq(messages.id, message.id));
+        const { data: verifyData, error: verifyError } = await supabase
+          .from("messages")
+          .select("id, sources, reasoning")
+          .eq("id", message.id)
+          .single();
+
+        if (verifyError) console.error("Verification error:", verifyError);
 
         // Update thread's last message timestamp
-        await db
-          .update(threads)
-          .set({ lastMessageAt: message.createdAt || new Date() })
-          .where(eq(threads.id, threadId));
+        const { error: updateError } = await supabase
+          .from("threads")
+          .update({
+            last_message_at:
+              message.createdAt?.toISOString() || new Date().toISOString(),
+          })
+          .eq("id", threadId);
+
+        if (updateError) throw updateError;
       } else {
         // Use IndexedDB via Dexie for local storage
         const { db } = await import("../frontend/dexie/db");
@@ -347,12 +369,13 @@ export class DataService {
 
       if (isAuth) {
         // First check if the message exists
-        const messageCheck = await db
-          .select({ id: messages.id })
-          .from(messages)
-          .where(eq(messages.id, messageId));
+        const { data: messageCheck, error: checkError } = await supabase
+          .from("messages")
+          .select("id")
+          .eq("id", messageId)
+          .single();
 
-        if (messageCheck.length === 0) {
+        if (checkError) {
           toast.error(
             "updateMessageSources - Message not found in database, cannot update sources"
           );
@@ -379,18 +402,21 @@ export class DataService {
         }
 
         // Update sources directly in the messages table
-        await db
-          .update(messages)
-          .set({
-            sources: sourcesJson,
-          })
-          .where(eq(messages.id, messageId));
+        const { error: updateError } = await supabase
+          .from("messages")
+          .update({ sources: sourcesJson })
+          .eq("id", messageId);
+
+        if (updateError) throw updateError;
 
         // Verify the update
-        await db
-          .select({ sources: messages.sources })
-          .from(messages)
-          .where(eq(messages.id, messageId));
+        const { error: verifyError } = await supabase
+          .from("messages")
+          .select("sources")
+          .eq("id", messageId)
+          .single();
+
+        if (verifyError) console.error("Verification error:", verifyError);
       } else {
         // Use IndexedDB via Dexie for local storage
         const { db } = await import("../frontend/dexie/db");
@@ -412,25 +438,21 @@ export class DataService {
 
       if (isAuth) {
         // Delete messages in Supabase
+        const createdAtIso = createdAt.toISOString();
+        let query = supabase
+          .from("messages")
+          .delete()
+          .eq("thread_id", threadId);
+
         if (gte) {
-          await db
-            .delete(messages)
-            .where(
-              and(
-                eq(messages.threadId, threadId),
-                eq(messages.createdAt, createdAt)
-              )
-            );
+          query = query.gte("created_at", createdAtIso);
         } else {
-          await db
-            .delete(messages)
-            .where(
-              and(
-                eq(messages.threadId, threadId),
-                eq(messages.createdAt, new Date(createdAt.getTime() + 1))
-              )
-            );
+          const nextTimestamp = new Date(createdAt.getTime() + 1).toISOString();
+          query = query.gte("created_at", nextTimestamp);
         }
+
+        const { error } = await query;
+        if (error) throw error;
       } else {
         // Use IndexedDB via Dexie for local storage
         const { db } = await import("../frontend/dexie/db");
@@ -480,13 +502,15 @@ export class DataService {
 
       if (isAuth) {
         // Create message summary in Supabase
-        await db.insert(messageSummaries).values({
+        const { error } = await supabase.from("message_summaries").insert({
           id: uuidv4(),
-          threadId,
-          messageId,
+          thread_id: threadId,
+          message_id: messageId,
           content,
-          createdAt: new Date(),
+          created_at: new Date().toISOString(),
         });
+
+        if (error) throw error;
       } else {
         // Use IndexedDB via Dexie for local storage
         const { db } = await import("../frontend/dexie/db");
@@ -510,11 +534,21 @@ export class DataService {
 
       if (isAuth) {
         // Get message summaries from Supabase
-        return await db
-          .select()
-          .from(messageSummaries)
-          .where(eq(messageSummaries.threadId, threadId))
-          .orderBy(messageSummaries.createdAt);
+        const { data, error } = await supabase
+          .from("message_summaries")
+          .select("*")
+          .eq("thread_id", threadId)
+          .order("created_at", { ascending: true });
+
+        if (error) throw error;
+
+        // Transform to camelCase
+        return data.map((summary) => ({
+          ...summary,
+          threadId: summary.thread_id,
+          messageId: summary.message_id,
+          createdAt: new Date(summary.created_at),
+        }));
       } else {
         // Use IndexedDB via Dexie for local storage
         const { db } = await import("../frontend/dexie/db");
@@ -536,12 +570,13 @@ export class DataService {
 
       if (isAuth) {
         // First check if the message exists
-        const messageCheck = await db
-          .select({ id: messages.id })
-          .from(messages)
-          .where(eq(messages.id, messageId));
+        const { data: messageCheck, error: checkError } = await supabase
+          .from("messages")
+          .select("id")
+          .eq("id", messageId)
+          .single();
 
-        if (messageCheck.length === 0) {
+        if (checkError) {
           toast.error(
             "updateMessageReasoning - Message not found in database, cannot update reasoning"
           );
@@ -552,18 +587,21 @@ export class DataService {
         const safeReasoning = reasoning ? String(reasoning) : "";
 
         // Update reasoning directly in the messages table
-        await db
-          .update(messages)
-          .set({
-            reasoning: safeReasoning,
-          })
-          .where(eq(messages.id, messageId));
+        const { error: updateError } = await supabase
+          .from("messages")
+          .update({ reasoning: safeReasoning })
+          .eq("id", messageId);
+
+        if (updateError) throw updateError;
 
         // Verify the update
-        await db
-          .select({ reasoning: messages.reasoning })
-          .from(messages)
-          .where(eq(messages.id, messageId));
+        const { error: verifyError } = await supabase
+          .from("messages")
+          .select("reasoning")
+          .eq("id", messageId)
+          .single();
+
+        if (verifyError) console.error("Verification error:", verifyError);
       } else {
         // Use IndexedDB via Dexie for local storage
         const { db } = await import("../frontend/dexie/db");
@@ -606,26 +644,30 @@ export class DataService {
         console.log(`Processing thread: ${thread.id} - ${thread.title}`);
 
         // Check if thread already exists in Supabase
-        const existingThreads = await db
-          .select()
-          .from(threads)
-          .where(eq(threads.id, thread.id));
+        const { data: existingThreads, error: threadCheckError } =
+          await supabase.from("threads").select("id").eq("id", thread.id);
 
-        if (existingThreads.length === 0) {
+        if (threadCheckError) throw threadCheckError;
+
+        if (!existingThreads?.length) {
           console.log(
             `Thread ${thread.id} does not exist in Supabase, creating it`
           );
 
           // Create thread in Supabase
-          await db.insert(threads).values({
-            id: thread.id,
-            title: thread.title,
-            userId,
-            createdAt: thread.createdAt,
-            updatedAt: thread.updatedAt,
-            lastMessageAt: thread.lastMessageAt,
-            isBranch: thread.isBranch || false,
-          });
+          const { error: insertThreadError } = await supabase
+            .from("threads")
+            .insert({
+              id: thread.id,
+              title: thread.title,
+              user_id: userId,
+              created_at: thread.createdAt?.toISOString(),
+              updated_at: thread.updatedAt?.toISOString(),
+              last_message_at: thread.lastMessageAt?.toISOString(),
+              is_branch: thread.isBranch || false,
+            });
+
+          if (insertThreadError) throw insertThreadError;
 
           // Get all messages for this thread
           const localMessages = await localDb.messages
@@ -642,12 +684,12 @@ export class DataService {
             console.log(`Processing message: ${message.id}`);
 
             // Check if message already exists
-            const existingMessages = await db
-              .select()
-              .from(messages)
-              .where(eq(messages.id, message.id));
+            const { data: existingMessages, error: messageCheckError } =
+              await supabase.from("messages").select("id").eq("id", message.id);
 
-            if (existingMessages.length === 0) {
+            if (messageCheckError) throw messageCheckError;
+
+            if (!existingMessages?.length) {
               console.log(
                 `Message ${message.id} does not exist in Supabase, creating it`
               );
@@ -670,17 +712,20 @@ export class DataService {
               }
 
               // Insert message
-              await db.insert(messages).values({
-                id: message.id,
-                threadId: message.threadId,
-                userId,
-                content: message.content,
-                role: message.role,
-                createdAt: message.createdAt,
-                sources: sourcesJson,
-                reasoning: message.reasoning || null,
-              });
+              const { error: insertMessageError } = await supabase
+                .from("messages")
+                .insert({
+                  id: message.id,
+                  thread_id: message.threadId,
+                  user_id: userId,
+                  content: message.content,
+                  role: message.role,
+                  created_at: message.createdAt?.toISOString(),
+                  sources: sourcesJson,
+                  reasoning: message.reasoning || null,
+                });
 
+              if (insertMessageError) throw insertMessageError;
               console.log(`Message ${message.id} created successfully`);
             } else {
               console.log(
@@ -703,20 +748,26 @@ export class DataService {
             console.log(`Processing summary: ${summary.id}`);
 
             // Check if summary already exists
-            const existingSummaries = await db
-              .select()
-              .from(messageSummaries)
-              .where(eq(messageSummaries.id, summary.id));
+            const { data: existingSummaries, error: summaryCheckError } =
+              await supabase
+                .from("message_summaries")
+                .select("id")
+                .eq("id", summary.id);
 
-            if (existingSummaries.length === 0) {
-              await db.insert(messageSummaries).values({
-                id: summary.id,
-                threadId: summary.threadId,
-                messageId: summary.messageId,
-                content: summary.content,
-                createdAt: summary.createdAt,
-              });
+            if (summaryCheckError) throw summaryCheckError;
 
+            if (!existingSummaries?.length) {
+              const { error: insertSummaryError } = await supabase
+                .from("message_summaries")
+                .insert({
+                  id: summary.id,
+                  thread_id: summary.threadId,
+                  message_id: summary.messageId,
+                  content: summary.content,
+                  created_at: summary.createdAt?.toISOString(),
+                });
+
+              if (insertSummaryError) throw insertSummaryError;
               console.log(`Summary ${summary.id} created successfully`);
             } else {
               console.log(

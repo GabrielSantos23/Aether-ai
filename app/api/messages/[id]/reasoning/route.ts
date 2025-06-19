@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { messages } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { supabase } from "@/lib/db";
 
 // PUT /api/messages/[id]/reasoning - Update reasoning for a message
 export async function PUT(
@@ -42,12 +40,13 @@ export async function PUT(
 
     // Check if the message exists and belongs to the user
     try {
-      const messageResult = await db
-        .select()
-        .from(messages)
-        .where(eq(messages.id, messageId));
+      const { data: messageResult, error: messageError } = await supabase
+        .from("messages")
+        .select("user_id")
+        .eq("id", messageId)
+        .single();
 
-      if (messageResult.length === 0) {
+      if (messageError) {
         return NextResponse.json(
           { error: "Message not found" },
           { status: 404 }
@@ -55,9 +54,7 @@ export async function PUT(
       }
 
       // Check if the message belongs to the user
-      const message = messageResult[0];
-
-      if (message.userId !== session.user.id) {
+      if (messageResult.user_id !== session.user.id) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
 
@@ -65,18 +62,25 @@ export async function PUT(
       const safeReasoning = reasoning ? String(reasoning) : "";
 
       // Update reasoning directly in the messages table
-      await db
-        .update(messages)
-        .set({
-          reasoning: safeReasoning,
-        })
-        .where(eq(messages.id, messageId));
+      const { error: updateError } = await supabase
+        .from("messages")
+        .update({ reasoning: safeReasoning })
+        .eq("id", messageId);
+
+      if (updateError) {
+        throw updateError;
+      }
 
       // Verify the update worked
-      await db
-        .select({ reasoning: messages.reasoning })
-        .from(messages)
-        .where(eq(messages.id, messageId));
+      const { data: verifyData, error: verifyError } = await supabase
+        .from("messages")
+        .select("reasoning")
+        .eq("id", messageId)
+        .single();
+
+      if (verifyError) {
+        console.error("Verification error:", verifyError);
+      }
 
       return NextResponse.json({ success: true });
     } catch (dbError) {

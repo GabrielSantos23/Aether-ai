@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { threads } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { supabase } from "@/lib/db";
 
 // GET /api/threads - Get all threads for the current user
 export async function GET(request: NextRequest) {
@@ -14,11 +12,15 @@ export async function GET(request: NextRequest) {
     }
 
     // Get all threads for the current user
-    const userThreads = await db
-      .select()
-      .from(threads)
-      .where(eq(threads.userId, session.user.id))
-      .orderBy(threads.lastMessageAt);
+    const { data: userThreads, error } = await supabase
+      .from("threads")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .order("last_message_at", { ascending: true });
+
+    if (error) {
+      throw error;
+    }
 
     return NextResponse.json(userThreads.reverse());
   } catch (error) {
@@ -43,15 +45,19 @@ export async function POST(request: NextRequest) {
     const { id, title, isBranch = false } = await request.json();
 
     // Create the thread
-    await db.insert(threads).values({
+    const { error } = await supabase.from("threads").insert({
       id,
       title,
-      userId: session.user.id,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      lastMessageAt: new Date(),
-      isBranch,
+      user_id: session.user.id,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      last_message_at: new Date().toISOString(),
+      is_branch: isBranch,
     });
+
+    if (error) {
+      throw error;
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -73,7 +79,14 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Delete all threads for the current user
-    await db.delete(threads).where(eq(threads.userId, session.user.id));
+    const { error } = await supabase
+      .from("threads")
+      .delete()
+      .eq("user_id", session.user.id);
+
+    if (error) {
+      throw error;
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

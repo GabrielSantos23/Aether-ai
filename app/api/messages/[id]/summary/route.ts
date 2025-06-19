@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { messages, messageSummaries } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { supabase } from "@/lib/db";
 import { v4 as uuidv4 } from "uuid";
 
 // POST /api/messages/[id]/summary - Create a summary for a message
@@ -24,29 +22,35 @@ export async function POST(
     const { threadId, content } = await request.json();
 
     // Check if the message exists and belongs to the user
-    const messageResult = await db
-      .select()
-      .from(messages)
-      .where(eq(messages.id, messageId));
+    const { data: messageResult, error: messageError } = await supabase
+      .from("messages")
+      .select("user_id")
+      .eq("id", messageId)
+      .single();
 
-    if (messageResult.length === 0) {
+    if (messageError) {
       return NextResponse.json({ error: "Message not found" }, { status: 404 });
     }
 
     // Check if the message belongs to the user
-    const message = messageResult[0];
-    if (message.userId !== session.user.id) {
+    if (messageResult.user_id !== session.user.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Create the summary
-    await db.insert(messageSummaries).values({
-      id: uuidv4(),
-      threadId,
-      messageId: messageId,
-      content,
-      createdAt: new Date(),
-    });
+    const { error: insertError } = await supabase
+      .from("message_summaries")
+      .insert({
+        id: uuidv4(),
+        thread_id: threadId,
+        message_id: messageId,
+        content,
+        created_at: new Date().toISOString(),
+      });
+
+    if (insertError) {
+      throw insertError;
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

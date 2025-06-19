@@ -1,14 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import {
-  messages,
-  messageSources,
-  threads,
-  messageReasonings,
-} from "@/lib/db/schema";
-import { eq, and, gte } from "drizzle-orm";
-import { v4 as uuidv4 } from "uuid";
+import { supabase } from "@/lib/db";
 
 // Define SearchSource interface
 interface SearchSource {
@@ -33,23 +25,27 @@ export async function GET(
     }
 
     // Check if the thread belongs to the user
-    const threadResult = await db
-      .select()
-      .from(threads)
-      .where(
-        and(eq(threads.id, threadId), eq(threads.userId, session.user.id))
-      );
+    const { data: threadResult, error: threadError } = await supabase
+      .from("threads")
+      .select("id")
+      .eq("id", threadId)
+      .eq("user_id", session.user.id)
+      .single();
 
-    if (threadResult.length === 0) {
+    if (threadError || !threadResult) {
       return NextResponse.json({ error: "Thread not found" }, { status: 404 });
     }
 
     // Get all messages for the thread
-    const result = await db
-      .select()
-      .from(messages)
-      .where(eq(messages.threadId, threadId))
-      .orderBy(messages.createdAt);
+    const { data: result, error: messagesError } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("thread_id", threadId)
+      .order("created_at", { ascending: true });
+
+    if (messagesError) {
+      throw messagesError;
+    }
 
     console.log(
       "Raw messages from database:",
@@ -88,6 +84,9 @@ export async function GET(
       // Create a properly formatted message with sources and reasoning
       return {
         ...message,
+        threadId: message.thread_id,
+        userId: message.user_id,
+        createdAt: new Date(message.created_at),
         sources,
         _reasoning: message.reasoning || "", // Add _reasoning field for client compatibility
       };
@@ -118,14 +117,14 @@ export async function POST(
     }
 
     // Check if the thread belongs to the user
-    const threadResult = await db
-      .select()
-      .from(threads)
-      .where(
-        and(eq(threads.id, threadId), eq(threads.userId, session.user.id))
-      );
+    const { data: threadResult, error: threadError } = await supabase
+      .from("threads")
+      .select("id")
+      .eq("id", threadId)
+      .eq("user_id", session.user.id)
+      .single();
 
-    if (threadResult.length === 0) {
+    if (threadError || !threadResult) {
       return NextResponse.json({ error: "Thread not found" }, { status: 404 });
     }
 
@@ -186,48 +185,59 @@ export async function POST(
     }
 
     // Create the message with sources and reasoning directly in the row
-    await db.insert(messages).values({
+    const { error: insertError } = await supabase.from("messages").insert({
       id,
-      threadId,
-      userId: session.user.id,
+      thread_id: threadId,
+      user_id: session.user.id,
       content,
       role,
-      createdAt: createdAt ? new Date(createdAt) : new Date(),
+      created_at: createdAt
+        ? new Date(createdAt).toISOString()
+        : new Date().toISOString(),
       sources: sourcesJson,
       reasoning: reasoning || null,
     });
 
-    // Verify the message was created with sources and reasoning
-    const verifyResult = await db
-      .select({
-        id: messages.id,
-        sources: messages.sources,
-        reasoning: messages.reasoning,
-      })
-      .from(messages)
-      .where(eq(messages.id, id));
+    if (insertError) {
+      throw insertError;
+    }
 
-    console.log("Verification query result:", {
-      found: verifyResult.length > 0,
-      hasSourcesField:
-        verifyResult.length > 0 && verifyResult[0].sources !== undefined,
-      sourcesValue: verifyResult.length > 0 ? verifyResult[0].sources : null,
-      hasReasoningField:
-        verifyResult.length > 0 && verifyResult[0].reasoning !== undefined,
-      reasoningPreview:
-        verifyResult.length > 0 && verifyResult[0].reasoning
-          ? verifyResult[0].reasoning.substring(0, 50) + "..."
-          : null,
-    });
+    // Verify the message was created with sources and reasoning
+    const { data: verifyResult, error: verifyError } = await supabase
+      .from("messages")
+      .select("id, sources, reasoning")
+      .eq("id", id)
+      .single();
+
+    if (verifyError) {
+      console.error("Verification query error:", verifyError);
+    } else {
+      console.log("Verification query result:", {
+        found: !!verifyResult,
+        hasSourcesField: verifyResult && verifyResult.sources !== undefined,
+        sourcesValue: verifyResult ? verifyResult.sources : null,
+        hasReasoningField: verifyResult && verifyResult.reasoning !== undefined,
+        reasoningPreview:
+          verifyResult && verifyResult.reasoning
+            ? verifyResult.reasoning.substring(0, 50) + "..."
+            : null,
+      });
+    }
 
     // Update thread's last message timestamp
-    await db
-      .update(threads)
-      .set({
-        lastMessageAt: createdAt ? new Date(createdAt) : new Date(),
-        updatedAt: new Date(),
+    const { error: updateError } = await supabase
+      .from("threads")
+      .update({
+        last_message_at: createdAt
+          ? new Date(createdAt).toISOString()
+          : new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       })
-      .where(eq(threads.id, threadId));
+      .eq("id", threadId);
+
+    if (updateError) {
+      throw updateError;
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -254,40 +264,36 @@ export async function DELETE(
     }
 
     // Check if the thread belongs to the user
-    const threadResult = await db
-      .select()
-      .from(threads)
-      .where(
-        and(eq(threads.id, threadId), eq(threads.userId, session.user.id))
-      );
+    const { data: threadResult, error: threadError } = await supabase
+      .from("threads")
+      .select("id")
+      .eq("id", threadId)
+      .eq("user_id", session.user.id)
+      .single();
 
-    if (threadResult.length === 0) {
+    if (threadError || !threadResult) {
       return NextResponse.json({ error: "Thread not found" }, { status: 404 });
     }
 
     // Get deletion criteria from request body
     const { createdAt, gte: gteFlag = true } = await request.json();
-    const dateToCompare = new Date(createdAt);
+    const dateToCompare = new Date(createdAt).toISOString();
 
     // Delete messages based on criteria
+    let query = supabase.from("messages").delete().eq("thread_id", threadId);
+
     if (gteFlag) {
-      await db
-        .delete(messages)
-        .where(
-          and(
-            eq(messages.threadId, threadId),
-            gte(messages.createdAt, dateToCompare)
-          )
-        );
+      query = query.gte("created_at", dateToCompare);
     } else {
-      await db
-        .delete(messages)
-        .where(
-          and(
-            eq(messages.threadId, threadId),
-            gte(messages.createdAt, new Date(dateToCompare.getTime() + 1))
-          )
-        );
+      const nextTimestamp = new Date(
+        new Date(createdAt).getTime() + 1
+      ).toISOString();
+      query = query.gte("created_at", nextTimestamp);
+    }
+
+    const { error: deleteError } = await query;
+    if (deleteError) {
+      throw deleteError;
     }
 
     return NextResponse.json({ success: true });

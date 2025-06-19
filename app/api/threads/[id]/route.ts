@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { threads } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { supabase } from "@/lib/db";
 
 // GET /api/threads/[id] - Get a specific thread
 export async function GET(
@@ -17,18 +15,30 @@ export async function GET(
     }
 
     // Get the thread
-    const threadResult = await db
-      .select()
-      .from(threads)
-      .where(
-        and(eq(threads.id, params.id), eq(threads.userId, session.user.id))
-      );
+    const { data: threadResult, error } = await supabase
+      .from("threads")
+      .select("*")
+      .eq("id", params.id)
+      .eq("user_id", session.user.id)
+      .single();
 
-    if (threadResult.length === 0) {
+    if (error) {
       return NextResponse.json({ error: "Thread not found" }, { status: 404 });
     }
 
-    return NextResponse.json(threadResult[0]);
+    // Convert to camelCase for frontend
+    const thread = {
+      id: threadResult.id,
+      title: threadResult.title,
+      userId: threadResult.user_id,
+      createdAt: threadResult.created_at,
+      updatedAt: threadResult.updated_at,
+      lastMessageAt: threadResult.last_message_at,
+      isPublic: threadResult.is_public,
+      isBranch: threadResult.is_branch,
+    };
+
+    return NextResponse.json(thread);
   } catch (error) {
     console.error("Error getting thread:", error);
     return NextResponse.json(
@@ -53,17 +63,21 @@ export async function PATCH(
     // Get thread data from request body
     const { title, isBranch } = await request.json();
 
+    // Prepare update data
+    const updateData: any = { updated_at: new Date().toISOString() };
+    if (title) updateData.title = title;
+    if (isBranch !== undefined) updateData.is_branch = isBranch;
+
     // Update the thread
-    await db
-      .update(threads)
-      .set({
-        ...(title && { title }),
-        ...(isBranch !== undefined && { isBranch }),
-        updatedAt: new Date(),
-      })
-      .where(
-        and(eq(threads.id, params.id), eq(threads.userId, session.user.id))
-      );
+    const { error } = await supabase
+      .from("threads")
+      .update(updateData)
+      .eq("id", params.id)
+      .eq("user_id", session.user.id);
+
+    if (error) {
+      throw error;
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -88,11 +102,15 @@ export async function DELETE(
     }
 
     // Delete the thread
-    await db
-      .delete(threads)
-      .where(
-        and(eq(threads.id, params.id), eq(threads.userId, session.user.id))
-      );
+    const { error } = await supabase
+      .from("threads")
+      .delete()
+      .eq("id", params.id)
+      .eq("user_id", session.user.id);
+
+    if (error) {
+      throw error;
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

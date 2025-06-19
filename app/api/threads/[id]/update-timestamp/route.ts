@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { threads } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { supabase } from "@/lib/db";
 
 // POST /api/threads/[id]/update-timestamp - Update the last message timestamp for a thread
 export async function POST(
@@ -23,25 +21,31 @@ export async function POST(
     const { lastMessageAt } = await request.json();
 
     // Check if the thread belongs to the user
-    const threadResult = await db
-      .select()
-      .from(threads)
-      .where(
-        and(eq(threads.id, threadId), eq(threads.userId, session.user.id))
-      );
+    const { data: threadResult, error: threadError } = await supabase
+      .from("threads")
+      .select("id")
+      .eq("id", threadId)
+      .eq("user_id", session.user.id)
+      .single();
 
-    if (threadResult.length === 0) {
+    if (threadError || !threadResult) {
       return NextResponse.json({ error: "Thread not found" }, { status: 404 });
     }
 
     // Update the thread's last message timestamp
-    await db
-      .update(threads)
-      .set({
-        lastMessageAt: lastMessageAt ? new Date(lastMessageAt) : new Date(),
-        updatedAt: new Date(),
+    const { error: updateError } = await supabase
+      .from("threads")
+      .update({
+        last_message_at: lastMessageAt
+          ? new Date(lastMessageAt).toISOString()
+          : new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       })
-      .where(eq(threads.id, threadId));
+      .eq("id", threadId);
+
+    if (updateError) {
+      throw updateError;
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
