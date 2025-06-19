@@ -1,3 +1,9 @@
+/**
+ * NOTE: This file is kept for reference only.
+ * The application now uses Supabase client directly instead of drizzle-orm.
+ * This schema definition can be used as documentation for the database structure.
+ */
+
 import {
   pgTable,
   serial,

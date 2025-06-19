@@ -1,15 +1,29 @@
 // Simple script to test database connection
 const postgres = require("postgres");
+require("dotenv").config();
 
 async function testConnection() {
   console.log("Testing database connection...");
 
-  // Connection string
-  const connectionString =
-    process.env.DATABASE_URL ||
-    "postgresql://postgres:gabriel.gs605@db.dggczdgoepdxmkwzoafl.supabase.co:5432/postgres";
+  // Get Supabase URL and key
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  console.log("Using connection string:", connectionString);
+  if (!supabaseUrl || !supabaseKey) {
+    console.error(
+      "Error: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY must be set"
+    );
+    process.exit(1);
+  }
+
+  // Extract host from Supabase URL
+  const host =
+    supabaseUrl.replace("https://", "").split(".")[0] + ".supabase.co";
+
+  // Build connection string
+  const connectionString = `postgresql://postgres:${supabaseKey}@${host}:5432/postgres`;
+
+  console.log("Using Supabase connection");
 
   try {
     // Create connection with IPv4 preference

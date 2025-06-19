@@ -1,39 +1,24 @@
 import { betterAuth } from "better-auth";
-import { Pool } from "pg";
+import { nextCookies } from "better-auth/next-js";
 
-// Create the Better Auth instance
 export const auth = betterAuth({
-  secret: process.env.BETTER_AUTH_SECRET || "your-secret-key",
-  database: new Pool({
-    connectionString: process.env.DATABASE_URL,
-  }),
-  emailAndPassword: {
-    enabled: true,
-    requireEmailVerification: true,
-    autoSignIn: true,
-  },
+  emailAndPassword: { enabled: true },
   socialProviders: {
     google: {
-      clientId: process.env.GOOGLE_CLIENT_ID as string,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     },
     github: {
-      clientId: process.env.GITHUB_CLIENT_ID as string,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET as string,
+      clientId: process.env.GITHUB_CLIENT_ID!,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
     },
   },
-  user: {
-    additionalFields: {
-      role: {
-        type: "string",
-        required: false,
-        defaultValue: "user",
-        input: false,
-      },
-    },
-  },
-  session: {
-    expiresIn: 604800, // 7 days
-    updateAge: 86400, // 1 day
+  plugins: [nextCookies()],
+  secret: process.env.BETTER_AUTH_SECRET,
+  db: {
+    type: "supabase",
+    url: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    key: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
   },
 });

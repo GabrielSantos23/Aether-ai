@@ -24,29 +24,14 @@ export class DataServiceClient {
   // Check authentication status in real-time
   private async checkAuthStatus() {
     try {
-      const { data: session } = await authClient.getSession();
-      const isAuthenticated = !!session?.user;
-      const userId = session?.user?.id || null;
-
-      // Update internal state if it's different
-      if (
-        this._isAuthenticated !== isAuthenticated ||
-        this._userId !== userId
-      ) {
-        console.log("Auth status changed during operation:", {
-          wasAuthenticated: this._isAuthenticated,
-          nowAuthenticated: isAuthenticated,
-          wasUserId: this._userId,
-          nowUserId: userId,
-        });
-        this._isAuthenticated = isAuthenticated;
-        this._userId = userId;
-      }
-
-      return { isAuthenticated, userId };
+      // Return the current authentication state that was set by the useDataService hook
+      return {
+        isAuthenticated: this._isAuthenticated,
+        userId: this._userId,
+      };
     } catch (error) {
       console.error("Error checking auth status:", error);
-      return { isAuthenticated: this._isAuthenticated, userId: this._userId };
+      return { isAuthenticated: false, userId: null };
     }
   }
 
@@ -962,15 +947,8 @@ export class DataServiceClient {
     console.log("DataServiceClient.migrateLocalDataToSupabase called");
 
     try {
-      // Check auth status before proceeding
-      const { isAuthenticated, userId } = await this.checkAuthStatus();
-
-      if (!isAuthenticated || !userId) {
-        console.error("Cannot migrate data: User not authenticated");
-        return false;
-      }
-
       // Call the server-side API to perform the migration
+      // The server will handle authentication checks
       const response = await fetch("/api/threads/migrate", {
         method: "POST",
         headers: {
@@ -979,7 +957,8 @@ export class DataServiceClient {
       });
 
       if (!response.ok) {
-        console.error("Migration API error:", await response.text());
+        const errorText = await response.text();
+        console.error("Migration API error:", errorText);
         return false;
       }
 
