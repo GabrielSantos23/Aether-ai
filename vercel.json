@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "env": {
+    "DATABASE_URL": "postgresql://postgres:gabriel.gs605@db.dggczdgoepdxmkwzoafl.supabase.co:5432/postgres"
+  }
+}
