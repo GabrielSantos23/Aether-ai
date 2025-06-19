@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
-  const headersList = headers();
+  const headersList = await headers();
   const googleApiKey = headersList.get("X-Google-API-Key");
 
   if (!googleApiKey) {

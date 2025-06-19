@@ -26,6 +26,7 @@ export default function Thread() {
   } = useDataService();
   const [serverMessages, setServerMessages] = useState<ExtendedUIMessage[]>([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [shouldTriggerAI, setShouldTriggerAI] = useState(false);
 
   // Local messages from IndexedDB (used when not authenticated)
   const localMessages = useLiveQuery(() => getMessagesByThreadId(id), [id]);
@@ -70,6 +71,26 @@ export default function Thread() {
     ? serverMessages
     : convertToUIMessages(localMessages);
 
+  // Check if we need to trigger an AI response
+  useEffect(() => {
+    // Only proceed if we have messages and they've been loaded
+    if (messagesToUse.length > 0 && !isLoadingMessages) {
+      // Check if we have only user messages without any AI responses
+      const hasUserMessages = messagesToUse.some((msg) => msg.role === "user");
+      const hasAssistantMessages = messagesToUse.some(
+        (msg) => msg.role === "assistant"
+      );
+
+      // If we have user messages but no assistant messages, we need to trigger the AI
+      if (hasUserMessages && !hasAssistantMessages) {
+        console.log(
+          "Found user messages without AI response, will trigger AI..."
+        );
+        setShouldTriggerAI(true);
+      }
+    }
+  }, [messagesToUse, isLoadingMessages]);
+
   return (
     <div className="relative w-full">
       <Chat
@@ -77,6 +98,7 @@ export default function Thread() {
         threadId={id}
         initialMessages={messagesToUse}
         isLoadingMessages={isLoadingMessages}
+        autoSubmitFirstUserMessage={shouldTriggerAI}
       />
       <SidebarButtonsRight threadId={id} />
     </div>

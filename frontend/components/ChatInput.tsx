@@ -345,7 +345,11 @@ function PureChatInput({
 
   return (
     <div className={`fixed w-full max-w-3xl bottom-4`}>
-      <div className="bg-card relative rounded-lg p-2 pb-0 w-full">
+      <div
+        className={`bg-card/70 backdrop-blur-2xl relative rounded-lg p-2 pb-0 w-full ${
+          id && "border"
+        }`}
+      >
         {!id && <ShineBorder shineColor={["#A07CFE", "#FE8FB5", "#FFBE7B"]} />}
         <div className="relative">
           <div className="flex flex-col">
@@ -456,8 +460,7 @@ function PureChatInput({
                       </Tooltip>
                     )}
 
-                    {/* Image Analysis toggle - only show if model supports vision */}
-                    {modelConfig.supportsVision && (
+                    {/* {modelConfig.supportsVision && (
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
@@ -474,10 +477,9 @@ function PureChatInput({
                           Coming soon: Image analysis
                         </TooltipContent>
                       </Tooltip>
-                    )}
+                    )} */}
 
-                    {/* Image Generation toggle - only show if model supports it */}
-                    {modelConfig.supportsImageGeneration && (
+                    {/* {modelConfig.supportsImageGeneration && (
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
@@ -494,10 +496,9 @@ function PureChatInput({
                           Coming soon: Image generation
                         </TooltipContent>
                       </Tooltip>
-                    )}
+                    )} */}
 
-                    {/* File Upload toggle - only show if model supports it */}
-                    {modelConfig.supportsFileUpload && (
+                    {/* {modelConfig.supportsFileUpload && (
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
@@ -514,9 +515,8 @@ function PureChatInput({
                           Coming soon: File upload
                         </TooltipContent>
                       </Tooltip>
-                    )}
-
-                    {/* Code Execution toggle - only show if model supports it */}
+                    )} */}
+                    {/* 
                     {modelConfig.supportsCodeExecution && (
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -534,10 +534,9 @@ function PureChatInput({
                           Coming soon: Code execution
                         </TooltipContent>
                       </Tooltip>
-                    )}
+                    )} */}
 
-                    {/* Audio Generation toggle - only show if model supports it */}
-                    {modelConfig.supportsAudioGeneration && (
+                    {/* {modelConfig.supportsAudioGeneration && (
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
@@ -554,10 +553,9 @@ function PureChatInput({
                           Coming soon: Audio generation
                         </TooltipContent>
                       </Tooltip>
-                    )}
+                    )} */}
 
-                    {/* Video Generation toggle - only show if model supports it */}
-                    {modelConfig.supportsVideoGeneration && (
+                    {/* {modelConfig.supportsVideoGeneration && (
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
@@ -574,11 +572,10 @@ function PureChatInput({
                           Coming soon: Video generation
                         </TooltipContent>
                       </Tooltip>
-                    )}
+                    )} */}
                   </TooltipProvider>
 
-                  {/* Image upload button - only show if image analysis is active */}
-                  {activeTools.imageAnalysis && (
+                  {/* {activeTools.imageAnalysis && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
@@ -595,7 +592,7 @@ function PureChatInput({
                         Coming soon: Image upload
                       </TooltipContent>
                     </Tooltip>
-                  )}
+                  )} */}
                 </div>
 
                 <div className="flex items-center gap-2">

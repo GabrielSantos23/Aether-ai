@@ -34,6 +34,12 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { useChatNavigator } from "@/frontend/hooks/useChatNavigator";
 import ChatNavigator from "../ChatNavigator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 // import { useChatStore } from "@/stores/ChatStore";
 
 export const CommandDialogContext = React.createContext<{
@@ -63,20 +69,21 @@ function SmallSidebarTrigger({
     <Button
       variant="ghost"
       size="icon"
-      className={`!size-5 ${className || ""}`}
+      className={`!size-4 px-4 py-4 cursor-pointer ${
+        className || " hover:bg-accent/50 rounded-md "
+      }`}
       onClick={toggleSidebar}
       {...props}
     >
       <PanelLeftIcon
         className={
-          contextSide === "right" ? "rotate-180 !w-5 !h-5" : "!w-5 !h-5"
+          contextSide === "right" ? "rotate-180 !w-4 !h-4" : "!w-4 !h-4"
         }
       />
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   );
 }
-
 export function SidebarButtons() {
   const { open, isMobile, openMobile } = useSidebar();
   const { setOpen: setCommandOpen } = useCommandDialog();
@@ -125,7 +132,7 @@ export function SidebarButtons() {
         isSidebarClosed ? "bg-card rounded-md border" : ""
       }`}
     >
-      <SmallSidebarTrigger className=" ml-2 " />
+      <SmallSidebarTrigger className=" " />
       <AnimatePresence>
         {isSidebarClosed && (
           <motion.div
@@ -137,21 +144,21 @@ export function SidebarButtons() {
           >
             <motion.div variants={itemVariants}>
               <Button
-                size="icon"
-                variant="ghost"
                 onClick={() => setCommandOpen(true)}
+                variant="ghost"
+                className="flex items-center justify-center hover:bg-accent/50 rounded-md p-2"
+                title="Search (Ctrl+K)"
               >
                 <Search className="w-5 h-5" />
               </Button>
             </motion.div>
             <motion.div variants={itemVariants}>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => setCommandOpen(true)}
+              <NavLink
+                to="/chat"
+                className="flex items-center justify-center hover:bg-accent/50 rounded-md p-2"
               >
                 <Plus className="w-5 h-5" />
-              </Button>
+              </NavLink>
             </motion.div>
           </motion.div>
         )}
@@ -418,14 +425,23 @@ export function SidebarButtonsRight({ threadId }: { threadId: string }) {
         <div className="absolute top-0 right-32 bg-card rounded-md border">
           <Popover>
             <PopoverTrigger>
-              <Button variant="ghost" className="bg-card" disabled={isLoading}>
-                {isPublic ? (
-                  <LockOpen className="h-4 w-4" />
-                ) : (
-                  <Lock className="h-4 w-4" />
-                )}
-                <span className="sr-only">Share Chat</span>
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" className="bg-card" disabled>
+                      {isPublic ? (
+                        <LockOpen className="h-4 w-4" />
+                      ) : (
+                        <Lock className="h-4 w-4" />
+                      )}
+                      <span className="sr-only">Share Chat</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <span>Coming soon</span>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </PopoverTrigger>
             <PopoverContent className="w-96 bg-card">
               <div className="grid gap-4">

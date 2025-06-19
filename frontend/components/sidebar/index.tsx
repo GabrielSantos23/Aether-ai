@@ -3,7 +3,13 @@ import ChatSidebar from "./ChatSidebar";
 import { RightSidebar } from "./RightSidebar";
 import { SidebarButtons, SidebarButtonsRight } from "./sidebar-buttons";
 import { useState, useContext } from "react";
-// import { Source } from "../chat/sourcemessages";
+// Define the Source type
+export type Source = {
+  id: string;
+  title: string;
+  content: string;
+  url?: string;
+};
 import React from "react";
 
 function getLocalStorageItem(key: string, defaultValue: boolean): boolean {

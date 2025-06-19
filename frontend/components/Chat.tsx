@@ -22,14 +22,15 @@ import {
   Video,
 } from "lucide-react";
 import { useChatNavigator } from "@/frontend/hooks/useChatNavigator";
-import { useState, useMemo, useEffect, useCallback } from "react";
-import { getModelConfig } from "@/lib/models";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+  useState,
+  useMemo,
+  useEffect,
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
+
 import { toast } from "sonner";
 import { SearchSource } from "@/lib/data-service";
 import { Message } from "@ai-sdk/ui-utils";
@@ -47,6 +48,7 @@ interface ChatProps {
   threadId: string;
   initialMessages: ExtendedUIMessage[];
   isLoadingMessages?: boolean;
+  autoSubmitFirstUserMessage?: boolean;
 }
 
 // Define types for the data stream
@@ -83,11 +85,15 @@ interface WebSearchMetadata {
   totalResults?: number;
 }
 
-export default function Chat({
-  threadId,
-  initialMessages,
-  isLoadingMessages = false,
-}: ChatProps) {
+const Chat = forwardRef<{ reload: () => void }, ChatProps>(function Chat(
+  {
+    threadId,
+    initialMessages,
+    isLoadingMessages = false,
+    autoSubmitFirstUserMessage = false,
+  },
+  ref
+) {
   const { getKey } = useAPIKeyStore();
   const selectedModel = useModelStore((state) => state.selectedModel);
   const modelConfig = useModelStore((state) => state.getModelConfig());
@@ -95,7 +101,13 @@ export default function Chat({
   const { id } = useParams();
 
   // Check if the selected model supports function calling
-  const supportsFunctionCalling = modelConfig.supportsFunctionCalling;
+  const supportsFunctionCalling = useMemo(() => {
+    return !!(
+      modelConfig.supportsWebSearch ||
+      modelConfig.supportsThinking ||
+      modelConfig.supportsVision
+    );
+  }, [modelConfig]);
 
   // Track active tools
   const [activeTools, setActiveTools] = useState({
@@ -280,14 +292,20 @@ export default function Chat({
           // Check if this is a web search tool
           const toolName = invocation.toolName;
 
-          if (toolName === "webSearch" || toolName === "web_search_preview") {
+          if (
+            toolName === "search" ||
+            toolName === "webSearch" ||
+            toolName === "web_search_preview"
+          ) {
             console.log("Found web search result:", invocation);
 
             let newSources: SearchSource[] = [];
             let output: any = invocation.result;
 
-            // Handle custom webSearch tool result format
+            // Handle Tavily search tool result format (new format)
             if (output && output.results && Array.isArray(output.results)) {
+              console.log("Processing Tavily search results:", output.results);
+
               newSources = output.results.map((result: any) => ({
                 id:
                   result.id ||
@@ -298,6 +316,18 @@ export default function Chat({
                 url: result.url || result.link || "",
                 snippet: result.snippet || result.description || "",
               }));
+
+              // If Tavily provides an answer, add it as a source too
+              if (output.answer) {
+                console.log("Found Tavily answer:", output.answer);
+                // Add the answer as a special source
+                newSources.push({
+                  id: `tavily-answer-${Date.now()}`,
+                  title: "Tavily Search Summary",
+                  url: "#",
+                  snippet: output.answer,
+                });
+              }
             }
             // Handle OpenAI web_search_preview result format
             else if (
@@ -337,6 +367,8 @@ export default function Chat({
 
                 return combinedSources;
               });
+            } else {
+              console.log("No sources found in search results");
             }
           }
         }
@@ -928,15 +960,15 @@ export default function Chat({
         toolName = "file upload";
         break;
       case "codeExecution":
-        isSupported = !!modelConfig.supportsCodeExecution;
+        isSupported = false; // Not supported in any model yet
         toolName = "code execution";
         break;
       case "audioGeneration":
-        isSupported = !!modelConfig.supportsAudioGeneration;
+        isSupported = false; // Not supported in any model yet
         toolName = "audio generation";
         break;
       case "videoGeneration":
-        isSupported = !!modelConfig.supportsVideoGeneration;
+        isSupported = false; // Not supported in any model yet
         toolName = "video generation";
         break;
     }
@@ -994,6 +1026,43 @@ export default function Chat({
     }
   }, [selectedModel]);
 
+  // Expose reload function to parent components
+  useImperativeHandle(
+    ref,
+    () => ({
+      reload: () => {
+        console.log("Reload triggered externally");
+        if (messages.length > 0) {
+          reload();
+        }
+      },
+    }),
+    [reload, messages.length]
+  );
+
+  // Add effect to handle auto-submission of first user message
+  useEffect(() => {
+    if (
+      autoSubmitFirstUserMessage &&
+      messages.length > 0 &&
+      !isLoading &&
+      status !== "streaming"
+    ) {
+      // Find the first user message
+      const userMessages = messages.filter((msg) => msg.role === "user");
+      if (
+        userMessages.length > 0 &&
+        !messages.some((msg) => msg.role === "assistant")
+      ) {
+        console.log("Auto-submitting first user message");
+        // Use a timeout to ensure everything is ready
+        setTimeout(() => {
+          reload();
+        }, 500);
+      }
+    }
+  }, [autoSubmitFirstUserMessage, messages, isLoading, status, reload]);
+
   return (
     <div className="relative w-full">
       <div
@@ -1047,9 +1116,11 @@ export default function Chat({
             stop={stop}
             searchSources={searchSources}
           />
-          <div className="flex justify-center items-center fixed bottom-2/4 left-0 right-0 w-full">
-            {!id && <ChatTitle />}
-          </div>
+          {!id && (
+            <div className="flex justify-center h-[calc(100vh-20rem)] items-center">
+              <ChatTitle />
+            </div>
+          )}
 
           <ChatInput
             threadId={threadId}
@@ -1214,4 +1285,6 @@ export default function Chat({
       </div>
     </div>
   );
-}
+});
+
+export default Chat;

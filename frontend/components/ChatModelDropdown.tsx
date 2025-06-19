@@ -14,14 +14,26 @@ import {
   Music,
   Video,
   BrainCircuit,
+  ChevronLeft,
 } from "lucide-react";
 import { memo, useCallback, useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from "@/components/ui/tooltip";
 
 import { cn } from "@/lib/utils";
 import { useAPIKeyStore } from "@/frontend/stores/APIKeyStore";
 import { useModelStore } from "@/frontend/stores/ModelStore";
-import { AI_MODELS, AIModel, getModelConfig } from "@/lib/models";
+import {
+  AI_MODELS,
+  AIModel,
+  getModelConfig,
+  getModelDescription,
+} from "@/lib/models";
 
 // Import icon components
 import {
@@ -66,6 +78,24 @@ const getModelFeatures = (modelName: AIModel): string[] => {
   return features;
 };
 
+const getFeatureIcon = (feature: string) => {
+  const iconClass = "w-3.5 h-3.5 text-muted-foreground";
+  switch (feature) {
+    case "vision":
+      return <Eye className={iconClass} />;
+    case "image":
+      return <Video className={iconClass} />;
+    case "search":
+      return <Globe className={iconClass} />;
+    case "upload":
+      return <Upload className={iconClass} />;
+    case "thinking":
+      return <BrainCircuit className={iconClass} />;
+    default:
+      return null;
+  }
+};
+
 const getFavoriteModels = (): AIModel[] => {
   return [
     "Claude Opus 4",
@@ -74,7 +104,7 @@ const getFavoriteModels = (): AIModel[] => {
     "GPT-4.1-mini",
     "Gemini 2.5 Pro",
     "Gemini 2.5 Flash",
-    "Llama 4 Maverick",
+    "Deepseek R1 0528",
   ];
 };
 
@@ -83,7 +113,7 @@ const getOtherModels = (): AIModel[] => {
 };
 
 const getProviderIcon = (provider: string) => {
-  const iconClass = "w-6 h-6";
+  const iconClass = "w-4 h-4";
   switch (provider) {
     case "google":
       return <GoogleIcon className={iconClass} />;
@@ -106,88 +136,53 @@ interface ModelCardProps {
   model: AIModel;
   isSelected: boolean;
   onSelect: (model: AIModel) => void;
-  isListView?: boolean;
 }
 
-const ModelCard = ({
-  model,
-  isSelected,
-  onSelect,
-  isListView = false,
-}: ModelCardProps) => {
+const ModelCard = ({ model, isSelected, onSelect }: ModelCardProps) => {
   const getKey = useAPIKeyStore((state) => state.getKey);
   const modelConfig = getModelConfig(model);
   const provider = modelConfig.provider;
   const apiKey = getKey(provider);
   const isEnabled = !!apiKey;
   const features = getModelFeatures(model);
+  const description = getModelDescription(model);
+  const displayName = model;
 
-  const displayName = model.includes(" ") ? model.replace(" ", "\n") : model;
-
-  const cardClass = isListView
-    ? `flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-colors border ${
-        !isEnabled
-          ? "opacity-50 cursor-not-allowed bg-card"
-          : isSelected
-          ? "bg-pink-500/20 border border-pink-500/50"
-          : "bg-card hover:bg-accent/50"
-      }`
-    : `relative p-3 rounded-xl cursor-pointer transition-all ${
-        !isEnabled
-          ? "opacity-50 cursor-not-allowed bg-card"
-          : isSelected
-          ? "bg-pink-500/20 border-2 border-pink-500/50"
-          : "bg-card hover:bg-accent/50 border border-border"
-      }`;
+  const cardClass = `flex items-center justify-between px-3 w-full group py-2 rounded-lg cursor-pointer transition-colors border ${
+    !isEnabled
+      ? "opacity-50 cursor-not-allowed bg-card"
+      : isSelected
+      ? "bg-purple-500/20 border border-purple-500/50"
+      : "bg-card hover:bg-accent/50"
+  }`;
 
   return (
     <div className={cardClass} onClick={() => isEnabled && onSelect(model)}>
-      <div
-        className={
-          isListView
-            ? "flex items-center gap-3"
-            : "flex flex-col items-center gap-2"
-        }
-      >
+      <div className="flex items-center gap-3">
         {getProviderIcon(provider)}
-        <div className={`text-center ${isListView ? "text-left" : ""}`}>
-          <div className="text-sm font-medium whitespace-pre-line">
+        <div className="text-left">
+          <div className="text-sm font-medium text-muted-foreground group-hover:text-foreground flex items-center gap-2">
             {displayName}
+            <TooltipProvider>
+              <Tooltip delayDuration={300}>
+                <TooltipTrigger asChild onClick={(e) => e.stopPropagation()}>
+                  <Info className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
+                </TooltipTrigger>
+                <TooltipContent
+                  side="top"
+                  className="bg-background text-primary border mb-5"
+                >
+                  <p className="max-w-xs text-xs">{description}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
       </div>
-
-      <div className={`flex gap-1 ${isListView ? "ml-auto" : "mt-2"}`}>
-        {features.includes("vision") && (
-          <Eye className="w-4 h-4 text-gray-400" />
-        )}
-        {features.includes("chat") && (
-          <MessageSquare className="w-4 h-4 text-gray-400" />
-        )}
-        {features.includes("docs") && (
-          <FileText className="w-4 h-4 text-gray-400" />
-        )}
-        {features.includes("code") && (
-          <Code className="w-4 h-4 text-gray-400" />
-        )}
-        {features.includes("search") && (
-          <Globe className="w-4 h-4 text-gray-400" />
-        )}
-        {features.includes("upload") && (
-          <Upload className="w-4 h-4 text-gray-400" />
-        )}
-        {features.includes("thinking") && (
-          <BrainCircuit className="w-4 h-4 text-gray-400" />
-        )}
-        {features.includes("audio") && (
-          <Music className="w-4 h-4 text-gray-400" />
-        )}
-        {features.includes("video") && (
-          <Video className="w-4 h-4 text-gray-400" />
-        )}
-        {features.includes("image") && (
-          <div className="w-4 h-4 bg-red-500 rounded-sm"></div>
-        )}
+      <div className="flex items-center gap-1">
+        {features.map((feature) => (
+          <div key={feature}>{getFeatureIcon(feature)}</div>
+        ))}
       </div>
     </div>
   );
@@ -196,23 +191,18 @@ const ModelCard = ({
 const PureChatModelDropdown = () => {
   const { selectedModel, setModel } = useModelStore();
   const [isOpen, setIsOpen] = useState(false);
-  const [showAll, setShowAll] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [thinkingOnly, setThinkingOnly] = useState(false);
+  const [groupBy, setGroupBy] = useState<"none" | "provider">("none");
   const dropdownRef = useRef<HTMLDivElement>(null);
   const getKey = useAPIKeyStore((state) => state.getKey);
 
   const handleModelSelect = (model: AIModel) => {
     setModel(model);
     setIsOpen(false);
-    setShowAll(false);
     setSearchQuery("");
   };
 
-  const toggleShowAll = () => {
-    setShowAll(!showAll);
-  };
-
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -231,27 +221,43 @@ const PureChatModelDropdown = () => {
 
   const favoriteModels = getFavoriteModels();
   const otherModels = getOtherModels();
+  const allModels = [...favoriteModels, ...otherModels];
   const modelConfig = getModelConfig(selectedModel);
 
-  // Filter models based on search query
-  const filteredFavoriteModels = searchQuery
-    ? favoriteModels.filter((model) =>
+  // Filter models based on search query and thinking toggle
+  let filteredModels = searchQuery
+    ? allModels.filter((model) =>
         model.toLowerCase().includes(searchQuery.toLowerCase())
       )
-    : favoriteModels;
+    : allModels;
 
-  const filteredOtherModels = searchQuery
-    ? otherModels.filter((model) =>
-        model.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : otherModels;
+  // Filter by thinking capability if toggle is on
+  if (thinkingOnly) {
+    filteredModels = filteredModels.filter((model) => {
+      const features = getModelFeatures(model);
+      return features.includes("thinking");
+    });
+  }
+
+  // Group models by provider if selected
+  const groupedModels =
+    groupBy === "provider"
+      ? filteredModels.reduce((acc, model) => {
+          const provider = getProviderFromModel(model);
+          if (!acc[provider]) {
+            acc[provider] = [];
+          }
+          acc[provider].push(model);
+          return acc;
+        }, {} as Record<string, AIModel[]>)
+      : null;
 
   return (
     <div className="relative" ref={dropdownRef}>
       <Button
         onClick={() => setIsOpen(!isOpen)}
         variant="ghost"
-        className="flex items-center gap-2 px-3 py-2 bg-card rounded-lg  text-sm transition-colors"
+        className="flex items-center gap-2 px-3 py-2 bg-card rounded-lg text-sm transition-colors"
       >
         {getProviderIcon(modelConfig.provider)}
         <span>{selectedModel.replace(" ", " ")}</span>
@@ -263,17 +269,13 @@ const PureChatModelDropdown = () => {
       </Button>
 
       {isOpen && (
-        <div
-          className={`absolute bottom-full left-0 mb-2 ${
-            showAll ? "w-[40rem]" : "w-96"
-          } bg-card border  rounded-xl shadow-xl z-50 overflow-hidden`}
-        >
+        <div className="absolute bottom-full left-0 mb-2 w-96 bg-card border rounded-xl shadow-xl z-50 overflow-hidden">
           <div className="p-4 border-b border-border">
-            <div className="flex items-center relative">
+            <div className="flex items-center relative mb-3">
               <input
                 type="text"
                 placeholder="Search models..."
-                className="w-full py-2 pl-6  rounded-lg bg-card placeholder-text-muted-foreground focus:outline-none transition focus:ring-0 focus:ring-offset-0"
+                className="w-full pl-6 rounded-lg bg-card placeholder-text-muted-foreground focus:outline-none transition focus:ring-0 focus:ring-offset-0"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -281,59 +283,57 @@ const PureChatModelDropdown = () => {
                 <Search className="w-4 h-4" />
               </span>
             </div>
+
+            {/* Controls row */}
+            <div className="flex items-center justify-between">
+              {/* Thinking toggle */}
+              <div className="flex items-center gap-2">
+                <BrainCircuit className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Thinking</span>
+                <button
+                  onClick={() => setThinkingOnly(!thinkingOnly)}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                    thinkingOnly ? "bg-purple-500" : "bg-gray-600"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                      thinkingOnly ? "translate-x-5" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Group by dropdown */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Group by</span>
+                <select
+                  value={groupBy}
+                  onChange={(e) =>
+                    setGroupBy(e.target.value as "none" | "provider")
+                  }
+                  className="text-sm bg-card border border-border rounded px-2 py-1 text-muted-foreground focus:outline-none focus:ring-0"
+                >
+                  <option value="none">None</option>
+                  <option value="provider">Provider</option>
+                </select>
+              </div>
+            </div>
           </div>
 
           <div className="p-4">
-            {!showAll ? (
-              <div className="space-y-1">
-                {filteredFavoriteModels.map((model) => (
-                  <ModelCard
-                    key={model}
-                    model={model}
-                    isSelected={selectedModel === model}
-                    onSelect={handleModelSelect}
-                    isListView={true}
-                  />
-                ))}
-                {searchQuery &&
-                  filteredOtherModels.map((model) => (
-                    <ModelCard
-                      key={model}
-                      model={model}
-                      isSelected={selectedModel === model}
-                      onSelect={handleModelSelect}
-                      isListView={true}
-                    />
-                  ))}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Star className="w-4 h-4 text-pink-400" />
-                    <h4 className="text-pink-400 text-sm font-medium">
-                      Favorites
-                    </h4>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    {filteredFavoriteModels.map((model) => (
-                      <ModelCard
-                        key={model}
-                        model={model}
-                        isSelected={selectedModel === model}
-                        onSelect={handleModelSelect}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                {(!searchQuery || filteredOtherModels.length > 0) && (
-                  <div>
-                    <h4 className="text-muted-foreground text-sm font-medium mb-3">
-                      Others
-                    </h4>
-                    <div className="grid grid-cols-5 gap-3">
-                      {filteredOtherModels.map((model) => (
+            <div className="space-y-1 max-h-80 overflow-y-auto">
+              {groupBy === "provider" && groupedModels
+                ? // Grouped view
+                  Object.entries(groupedModels).map(([provider, models]) => (
+                    <div key={provider} className="mb-4">
+                      <div className="flex items-center gap-2 mb-2 px-2">
+                        {getProviderIcon(provider)}
+                        <h4 className="text-sm font-medium text-muted-foreground capitalize">
+                          {provider}
+                        </h4>
+                      </div>
+                      {models.map((model) => (
                         <ModelCard
                           key={model}
                           model={model}
@@ -342,31 +342,16 @@ const PureChatModelDropdown = () => {
                         />
                       ))}
                     </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="mt-4 pt-3 border-t ">
-              <Button
-                variant="ghost"
-                onClick={toggleShowAll}
-                className="flex items-center gap-2 text-muted-foreground hover:text-foreground text-sm transition-colors"
-              >
-                {showAll ? (
-                  <>
-                    <ChevronUp className="w-4 h-4" />
-                    <span>Favorites</span>
-                    <div className="w-2 h-2 bg-pink-500 rounded-full"></div>
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="w-4 h-4" />
-                    <span>Show all</span>
-                    <div className="w-2 h-2 bg-pink-500 rounded-full"></div>
-                  </>
-                )}
-              </Button>
+                  ))
+                : // Regular list view
+                  filteredModels.map((model) => (
+                    <ModelCard
+                      key={model}
+                      model={model}
+                      isSelected={selectedModel === model}
+                      onSelect={handleModelSelect}
+                    />
+                  ))}
             </div>
           </div>
         </div>

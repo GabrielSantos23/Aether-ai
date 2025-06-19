@@ -7,6 +7,7 @@ export const PROVIDERS = [
   "openai",
   "deepseek",
   "anthropic",
+  "groq",
 ] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
@@ -47,6 +48,7 @@ export const useAPIKeyStore = create<APIKeyStore>()(
         openai: "",
         deepseek: "",
         anthropic: "",
+        groq: "",
       },
 
       setKeys: (newKeys) => {

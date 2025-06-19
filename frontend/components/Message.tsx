@@ -21,14 +21,36 @@ interface SearchSource {
 const SearchSources = ({ sources }: { sources: SearchSource[] }) => {
   if (!sources || sources.length === 0) return null;
 
+  // Check if we have a Tavily summary
+  const tavilySummary = sources.find(
+    (source) => source.title === "Tavily Search Summary"
+  );
+  // Filter out the Tavily summary from regular sources
+  const regularSources = sources.filter(
+    (source) => source.title !== "Tavily Search Summary"
+  );
+
   return (
     <div className="mt-4 p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
       <h4 className="text-sm font-medium text-blue-500 mb-2 flex items-center gap-1">
         <Search className="h-3 w-3" />
-        Sources ({sources.length})
+        Sources ({regularSources.length})
       </h4>
+
+      {/* Display Tavily summary if available */}
+      {tavilySummary && (
+        <div className="mb-3 pb-3 border-b border-blue-500/20">
+          <h5 className="text-xs font-medium text-blue-500 mb-1">
+            Search Summary
+          </h5>
+          <p className="text-xs text-muted-foreground">
+            {tavilySummary.snippet}
+          </p>
+        </div>
+      )}
+
       <ul className="space-y-2">
-        {sources.map((source, index) => (
+        {regularSources.map((source, index) => (
           <li key={index} className="text-xs">
             <a
               href={source.url}
